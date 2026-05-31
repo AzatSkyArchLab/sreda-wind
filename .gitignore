@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+cases/
+*.foam
+*.vtk
+postProcessing/
+processor*/
+[0-9]*/
+!tests/aij/**/reference_data.json
