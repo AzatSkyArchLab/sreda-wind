@@ -59,7 +59,25 @@ class CaseSettings:
     # Mesh sizing (adaptive; no hard cell-count clip)
     target_facade_cell: float = 2.0
     cell_budget: int = 3_000_000
+    min_base_cell: float = 4.0     # background-cell floor; model-scale sets it small
     vertical_grading: float = 2.0  # blockMesh simpleGrading in z (fine near ground)
+
+    # Surface (prism) layers at the building walls (0 -> addLayers off)
+    surface_layers: int = 0
+    layer_expansion: float = 1.2
+    final_layer_thickness: float = 0.5   # relative to local cell size
+
+    # Ground wall treatment: z0 > 0 -> rough wall (atmNutkWallFunction with z0),
+    # z0 == 0 -> smooth wall (nutkWallFunction).
+    ground_z0: float = 0.0
+
+    # Confinement: True -> cross-stream sides and top are symmetry planes;
+    # False -> top is slip and cross-stream sides are inletOutlet (open domain).
+    side_top_symmetry: bool = False
+
+    # Geometry validation: minimum footprint area [m2]. The full-scale default
+    # rejects sub-metre noise; model-scale cases (e.g. AIJ, b=0.08) set it small.
+    min_building_area: float = 1.0
 
     # Post-processing
     sample_height: float = 1.75    # pedestrian height [m]

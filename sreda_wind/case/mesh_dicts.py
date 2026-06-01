@@ -22,8 +22,14 @@ _FACES = (
 )
 
 
-def block_mesh_dict(domain, mesh_spec, vertical_grading=2.0):
-    """blockMeshDict text for the background hex mesh."""
+def block_mesh_dict(domain, mesh_spec, vertical_grading=2.0, boundary_types=None):
+    """blockMeshDict text for the background hex mesh.
+
+    boundary_types: optional {patch_name: type} overriding the default patch
+    types (e.g. "symmetry" for confined side/top patches). ground stays a wall.
+    """
+    if boundary_types is None:
+        boundary_types = {}
     x0, x1 = domain.xmin, domain.xmax
     y0, y1 = domain.ymin, domain.ymax
     z0, z1 = domain.zmin, domain.zmax
@@ -55,7 +61,8 @@ def block_mesh_dict(domain, mesh_spec, vertical_grading=2.0):
     parts.append("(")
     i = 0
     while i < len(_FACES):
-        name, patch_type, face = _FACES[i]
+        name, default_type, face = _FACES[i]
+        patch_type = boundary_types.get(name, default_type)
         parts.append("    {}".format(name))
         parts.append("    {")
         parts.append("        type {};".format(patch_type))
@@ -67,22 +74,25 @@ def block_mesh_dict(domain, mesh_spec, vertical_grading=2.0):
 
 
 def snappy_hex_mesh_dict(mesh_spec, location_in_mesh, cell_budget,
-                         stl_file="buildings.stl"):
+                         stl_file="buildings.stl", surface_layers=0,
+                         layer_expansion=1.2, final_layer_thickness=0.5):
     """snappyHexMeshDict text. Buildings are snapped; trees are NOT here.
 
     location_in_mesh: (x, y, z) point known to be in the fluid region.
+    surface_layers > 0 adds that many prism/inflation layers at the buildings.
     """
     box = mesh_spec.refinement_box
     lx, ly, lz = location_in_mesh
     s = mesh_spec.surface_level
     r = mesh_spec.region_level
+    add_layers = surface_layers and surface_layers > 0
 
     parts = []
     parts.append(header("dictionary", "snappyHexMeshDict", location="system"))
     parts.append("")
     parts.append("castellatedMesh true;")
     parts.append("snap            true;")
-    parts.append("addLayers       false;")
+    parts.append("addLayers       {};".format("true" if add_layers else "false"))
     parts.append("")
     parts.append("geometry")
     parts.append("{")
@@ -138,7 +148,31 @@ def snappy_hex_mesh_dict(mesh_spec, location_in_mesh, cell_budget,
     parts.append("")
     parts.append("addLayersControls")
     parts.append("{")
-    parts.append("    layers {}")
+    if add_layers:
+        parts.append("    relativeSizes       true;")
+        parts.append("    layers")
+        parts.append("    {")
+        parts.append("        buildings")
+        parts.append("        {")
+        parts.append("            nSurfaceLayers {};".format(int(surface_layers)))
+        parts.append("        }")
+        parts.append("    }")
+        parts.append("    expansionRatio      {};".format(layer_expansion))
+        parts.append("    finalLayerThickness {};".format(final_layer_thickness))
+        parts.append("    minThickness        1e-3;")
+        parts.append("    nGrow               0;")
+        parts.append("    featureAngle        60;")
+        parts.append("    nRelaxIter          3;")
+        parts.append("    nSmoothSurfaceNormals 1;")
+        parts.append("    nSmoothNormals      3;")
+        parts.append("    nSmoothThickness    10;")
+        parts.append("    maxFaceThicknessRatio 0.5;")
+        parts.append("    maxThicknessToMedialRatio 0.3;")
+        parts.append("    minMedialAxisAngle  90;")
+        parts.append("    nBufferCellsNoExtrude 0;")
+        parts.append("    nLayerIter          50;")
+    else:
+        parts.append("    layers {}")
     parts.append("}")
     parts.append("")
     parts.append("meshQualityControls")

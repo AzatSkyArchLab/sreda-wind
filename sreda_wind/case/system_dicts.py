@@ -17,6 +17,10 @@ def control_dict(settings):
     parts = []
     parts.append(header("dictionary", "controlDict", location="system"))
     parts.append("")
+    # Rough-wall (atm) functions live in the atmospheric models library.
+    if settings.ground_z0 and settings.ground_z0 > 0.0:
+        parts.append('libs            ("libatmosphericModels.so");')
+        parts.append("")
     parts.append("solver          incompressibleFluid;")
     parts.append("startFrom       startTime;")
     parts.append("startTime       0;")

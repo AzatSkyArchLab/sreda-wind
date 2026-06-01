@@ -78,7 +78,7 @@ def _geometry_hash(cleaned):
     return h.hexdigest()
 
 
-def _validate_buildings(buildings):
+def _validate_buildings(buildings, min_area=1.0):
     """Validate footprints; return (cleaned list, bbox, max_height)."""
     cleaned = []
     all_x = []
@@ -87,7 +87,7 @@ def _validate_buildings(buildings):
     i = 0
     while i < len(buildings):
         b = buildings[i]
-        result = validate_polygon(b.footprint, b.height)
+        result = validate_polygon(b.footprint, b.height, min_area=min_area)
         if result is not None:
             cleaned.append(result)
             ring = result["coords"]
@@ -116,7 +116,12 @@ def _location_in_mesh(cleaned, bbox, domain, max_height):
     """
     cx = (bbox.xmin + bbox.xmax) / 2.0
     cy = (bbox.ymin + bbox.ymax) / 2.0
-    cz = max_height + 5.0
+    # Lift midway between the building top and the domain top, so the point is
+    # always inside the fluid region regardless of scale.
+    if domain.zmax > max_height:
+        cz = max_height + 0.5 * (domain.zmax - max_height)
+    else:
+        cz = 0.5 * domain.zmax
 
     inside = False
     i = 0
@@ -142,7 +147,7 @@ def _write(case_dir, rel_path, text, written):
 
 
 def generate_case(case_dir, buildings, direction_deg, speed,
-                  settings=None, porous_zones=None):
+                  settings=None, porous_zones=None, inlet_profile=None):
     """Write a complete OpenFOAM 13 case and return a GeneratedCase summary.
 
     case_dir: target directory (created if missing).
@@ -151,32 +156,37 @@ def generate_case(case_dir, buildings, direction_deg, speed,
     speed: reference wind speed at settings.z_ref [m/s].
     settings: CaseSettings (defaults applied if None).
     porous_zones: optional list of porous.PorousZone (trees).
+    inlet_profile: optional measured inflow as ((z, u, k, eps), ...); when given
+        the inlet uses tabulated profiles instead of Richards & Hoxey.
     """
     if settings is None:
         settings = CaseSettings()
     if porous_zones is None:
         porous_zones = []
 
-    cleaned, bbox, max_height = _validate_buildings(buildings)
+    cleaned, bbox, max_height = _validate_buildings(buildings, settings.min_building_area)
     H = max_height
 
     domain = compute_domain(bbox, H, direction_deg, settings.domain_factors)
     mesh_spec = compute_mesh_spec(
         domain, bbox, H,
         target_facade_cell=settings.target_facade_cell,
-        cell_budget=settings.cell_budget)
+        cell_budget=settings.cell_budget,
+        min_base_cell=settings.min_base_cell)
 
     abl = abl_parameters(speed, settings.z_ref, settings.z0)
     omega = abl.epsilon / (C_MU * abl.k)
 
     ux, uy, _ = inflow_velocity(direction_deg, speed)
     flow_x, flow_y = flow_vector(direction_deg)
-    patch_types = classify_patches(flow_x, flow_y)
+    patch_types = classify_patches(flow_x, flow_y, symmetry_sides=settings.side_top_symmetry)
+    top_bc = "symmetry" if settings.side_top_symmetry else "slip"
 
+    profile = tuple(inlet_profile) if inlet_profile is not None else None
     ctx = InletContext(
         ux=ux, uy=uy, flow_x=flow_x, flow_y=flow_y, speed=speed,
         z_ref=settings.z_ref, z0=settings.z0,
-        k=abl.k, epsilon=abl.epsilon, omega=omega)
+        k=abl.k, epsilon=abl.epsilon, omega=omega, profile=profile)
 
     location = _location_in_mesh(cleaned, bbox, domain, max_height)
 
@@ -194,11 +204,26 @@ def generate_case(case_dir, buildings, direction_deg, speed,
     write_ascii(tri_mesh, stl_path, name="buildings")
     written.append("constant/triSurface/buildings.stl")
 
+    # blockMesh patch types: symmetry where confined, patch for inlet/outlet.
+    boundary_types = {}
+    name_i = 0
+    lateral = ("xMin", "xMax", "yMin", "yMax")
+    while name_i < len(lateral):
+        name = lateral[name_i]
+        boundary_types[name] = "symmetry" if patch_types[name] == "symmetry" else "patch"
+        name_i += 1
+    boundary_types["top"] = "symmetry" if settings.side_top_symmetry else "patch"
+
     # system/
     _write(case_dir, "system/blockMeshDict",
-           mesh_dicts.block_mesh_dict(domain, mesh_spec, settings.vertical_grading), written)
+           mesh_dicts.block_mesh_dict(domain, mesh_spec, settings.vertical_grading,
+                                      boundary_types=boundary_types), written)
     _write(case_dir, "system/snappyHexMeshDict",
-           mesh_dicts.snappy_hex_mesh_dict(mesh_spec, location, settings.cell_budget), written)
+           mesh_dicts.snappy_hex_mesh_dict(
+               mesh_spec, location, settings.cell_budget,
+               surface_layers=settings.surface_layers,
+               layer_expansion=settings.layer_expansion,
+               final_layer_thickness=settings.final_layer_thickness), written)
     _write(case_dir, "system/controlDict",
            system_dicts.control_dict(settings), written)
     _write(case_dir, "system/fvSchemes",
@@ -221,13 +246,14 @@ def generate_case(case_dir, buildings, direction_deg, speed,
         _write(case_dir, "constant/fvOptions", porous.fv_options(porous_zones), written)
 
     # 0/
-    field_files = fields.all_fields(patch_types, ctx, settings.turbulence_model)
+    field_files = fields.all_fields(patch_types, ctx, settings.turbulence_model,
+                                    top_bc=top_bc, ground_z0=settings.ground_z0)
     for name in sorted(field_files):
         _write(case_dir, "0/{}".format(name), field_files[name], written)
 
     manifest_path = _write_manifest(
         case_dir, cleaned, direction_deg, speed, domain, mesh_spec, abl,
-        settings, n_procs, written)
+        settings, n_procs, written, profile is not None)
 
     return GeneratedCase(
         case_dir=case_dir, domain=domain, mesh_spec=mesh_spec, abl=abl,
@@ -236,7 +262,7 @@ def generate_case(case_dir, buildings, direction_deg, speed,
 
 
 def _write_manifest(case_dir, cleaned, direction_deg, speed, domain, mesh_spec,
-                    abl, settings, n_procs, written):
+                    abl, settings, n_procs, written, tabulated_inlet=False):
     """Write manifest.json capturing everything needed to reproduce the run."""
     manifest = {
         "openfoam_version": OPENFOAM_VERSION,
@@ -267,6 +293,12 @@ def _write_manifest(case_dir, cleaned, direction_deg, speed, domain, mesh_spec,
             "residual_control": settings.residual_control,
             "nu": settings.nu,
             "n_procs": n_procs,
+        },
+        "boundary": {
+            "ground_z0": settings.ground_z0,
+            "side_top_symmetry": settings.side_top_symmetry,
+            "surface_layers": settings.surface_layers,
+            "tabulated_inlet": tabulated_inlet,
         },
         "output": {"sample_height": settings.sample_height},
     }

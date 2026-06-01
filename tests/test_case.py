@@ -217,6 +217,110 @@ def test_generate_case_rejects_empty(tmp_path):
                       direction_deg=270.0, speed=5.0)
 
 
+# --- AIJ extensions: symmetry / rough wall / tabulated inlet / layers --------
+
+PROFILE = (
+    (0.0, 0.0, 0.30, 0.0),
+    (0.08, 2.0, 0.30, 0.010),
+    (0.16, 2.75, 0.30, 0.020),
+    (0.40, 3.30, 0.20, 0.005),
+)
+
+
+def test_classify_symmetry_sides():
+    # West wind with confinement: cross-stream sides become symmetry planes.
+    types = classify_patches(1.0, 0.0, symmetry_sides=True)
+    assert types["xMin"] == "inlet"
+    assert types["xMax"] == "outlet"
+    assert types["yMin"] == "symmetry"
+    assert types["yMax"] == "symmetry"
+
+
+def test_fields_symmetry_top_and_sides():
+    types = {"xMin": "inlet", "xMax": "outlet", "yMin": "symmetry", "yMax": "symmetry"}
+    u = fields.velocity_field(types, _ctx(), top_bc="symmetry")
+    # Both cross-stream sides and the top are symmetry.
+    assert u.count("type            symmetry;") == 3
+
+
+def test_nut_rough_ground():
+    types = {"xMin": "inlet", "xMax": "outlet", "yMin": "symmetry", "yMax": "symmetry"}
+    rough = fields.nut_field(types, top_bc="symmetry", ground_z0=1.8e-4)
+    assert "nutkAtmRoughWallFunction" in rough
+    assert "z0              uniform 0.00018" in rough
+    smooth = fields.nut_field(types, top_bc="slip", ground_z0=0.0)
+    assert "nutkAtmRoughWallFunction" not in smooth
+    assert "nutkWallFunction" in smooth
+
+
+def test_tabulated_inlet_fields():
+    types = {"xMin": "inlet", "xMax": "outlet", "yMin": "symmetry", "yMax": "symmetry"}
+    ctx = InletContext(
+        ux=2.75, uy=0.0, flow_x=1.0, flow_y=0.0, speed=2.75,
+        z_ref=0.16, z0=1.8e-4, k=0.30, epsilon=0.02, omega=0.4, profile=PROFILE)
+    u = fields.velocity_field(types, ctx, top_bc="symmetry")
+    assert "tabulatedInletVelocity" in u
+    assert "2.75" in u            # top of the U(z) table
+    k = fields.tke_field(types, ctx, top_bc="symmetry")
+    assert "tabulatedInlet_k" in k
+    eps = fields.epsilon_field(types, ctx, top_bc="symmetry")
+    assert "tabulatedInlet_epsilon" in eps
+
+
+def test_snappy_surface_layers():
+    bbox = BBox(0.0, 32.0, 0.0, 32.0)
+    domain = compute_domain(bbox, 64.0, 270.0)
+    spec = compute_mesh_spec(domain, bbox, 64.0)
+    with_layers = mesh_dicts.snappy_hex_mesh_dict(
+        spec, (0.0, 0.0, 70.0), 3_000_000, surface_layers=3)
+    assert "addLayers       true;" in with_layers
+    assert "nSurfaceLayers 3;" in with_layers
+    none = mesh_dicts.snappy_hex_mesh_dict(spec, (0.0, 0.0, 70.0), 3_000_000)
+    assert "addLayers       false;" in none
+
+
+def test_block_mesh_symmetry_types():
+    bbox = BBox(0.0, 32.0, 0.0, 32.0)
+    domain = compute_domain(bbox, 64.0, 270.0)
+    spec = compute_mesh_spec(domain, bbox, 64.0)
+    bt = {"xMin": "patch", "xMax": "patch", "yMin": "symmetry",
+          "yMax": "symmetry", "top": "symmetry"}
+    text = mesh_dicts.block_mesh_dict(domain, spec, boundary_types=bt)
+    assert text.count("type symmetry;") == 3
+    assert "type wall;" in text   # ground unaffected
+
+
+def test_generate_case_aij_style(tmp_path):
+    case_dir = str(tmp_path / "aij")
+    settings = CaseSettings(
+        turbulence_model="kEpsilon", iterations=100, residual_control=1e-6,
+        side_top_symmetry=True, ground_z0=1.8e-4, surface_layers=3,
+        target_facade_cell=0.08 / 14.0, min_building_area=1e-6)
+    result = generate_case(
+        case_dir,
+        buildings=[Building(footprint=[(-0.04, -0.04), (0.04, -0.04),
+                                       (0.04, 0.04), (-0.04, 0.04)], height=0.16)],
+        direction_deg=270.0, speed=2.75,
+        settings=settings, inlet_profile=PROFILE)
+
+    assert result.patch_types["yMin"] == "symmetry"
+
+    with open(os.path.join(case_dir, "0/U")) as f:
+        u_text = f.read()
+    assert "tabulatedInletVelocity" in u_text
+    assert "type            symmetry;" in u_text
+    with open(os.path.join(case_dir, "0/nut")) as f:
+        assert "nutkAtmRoughWallFunction" in f.read()
+    with open(os.path.join(case_dir, "system/snappyHexMeshDict")) as f:
+        assert "addLayers       true;" in f.read()
+
+    with open(result.manifest_path) as f:
+        manifest = json.load(f)
+    assert manifest["boundary"]["side_top_symmetry"] is True
+    assert manifest["boundary"]["ground_z0"] == 1.8e-4
+    assert manifest["boundary"]["tabulated_inlet"] is True
+
+
 def test_location_moved_when_inside_building(tmp_path):
     # A footprint centred on the origin; the bbox centre lies inside it, so the
     # insidePoint must be relocated toward the domain corner.
