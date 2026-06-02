@@ -39,11 +39,24 @@ def test_reference_loads_and_validates():
     assert data["case"] == "A"
     assert data["b"] == pytest.approx(0.08)
     pts = reference.inflow_points(data)
-    assert len(pts) >= 2
+    assert len(pts) == 24                       # real Table 1 profile
     # sorted by z, ascending
     assert pts[0][0] < pts[-1][0]
-    # The measured pedestrian ratios are not in hand yet (q check is blocked).
-    assert reference.has_pedestrian_ratios(data) is False
+    # Measured k now in hand: ~0.398 at z/b=0.125, ~0.653 at building height.
+    z0125 = [p for p in pts if abs(p[0] - 0.01) < 1e-9][0]
+    assert z0125[2] == pytest.approx(0.3977)
+    # The 60 measured pedestrian ratios are now populated (q check unblocked).
+    assert reference.has_pedestrian_ratios(data) is True
+    assert len(reference.pedestrian_ratios(data)) == 60
+
+
+def test_reference_u_ref_and_quantity():
+    data = reference.load_reference()
+    assert reference.u_ref(data, "pedestrian") == pytest.approx(2.935)
+    assert reference.u_ref(data, "secondary") == pytest.approx(4.021)
+    # ratio_horizontal is consistent with speed_horizontal / u_ref.
+    p = reference.pedestrian_ratios(data)[8]   # id 9
+    assert p["ratio_horizontal"] == pytest.approx(p["speed_horizontal"] / 2.935, abs=1e-3)
 
 
 def test_reattachment_targets_present():
@@ -72,7 +85,7 @@ def test_inlet_profile_from_reference():
     # Every epsilon is strictly positive and the table keeps the U values.
     for z, u, k, eps in profile:
         assert eps > 0.0
-    assert profile[1][1] == pytest.approx(2.75)   # u at z/b=0.125
+    assert profile[1][1] == pytest.approx(2.935)   # u at z/b=0.125 (Table 1)
 
 
 # --- reattachment extraction ------------------------------------------------

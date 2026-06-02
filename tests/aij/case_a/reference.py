@@ -15,7 +15,7 @@ _DEFAULT_PATH = os.path.join(os.path.dirname(__file__), "reference_data.json")
 
 _REQUIRED_TOP_KEYS = (
     "case", "b", "h", "wind_direction_deg",
-    "inflow_profile", "reattachment_targets", "measurement_grid",
+    "inflow_profile", "reattachment_targets", "pedestrian_ratios_z0125",
 )
 
 
@@ -75,3 +75,20 @@ def has_pedestrian_ratios(data):
 def pedestrian_ratios(data):
     """Return the pedestrian-plane reference points (possibly empty)."""
     return data.get("pedestrian_ratios_z0125", {}).get("points", [])
+
+
+def secondary_ratios(data):
+    """Return the z/b=1.25 secondary-plane reference points (possibly empty)."""
+    return data.get("secondary_ratios_z125", {}).get("points", [])
+
+
+def u_ref(data, plane="pedestrian"):
+    """Reference inflow speed for normalising ratios.
+
+    plane="pedestrian" -> U at z/b=0.125 (2.935 m/s); plane="secondary" ->
+    U at z/b=1.25 (4.021 m/s). From Table 1 (primary source).
+    """
+    ur = data["u_ref"]
+    if plane == "secondary":
+        return ur["z_over_b_125"]
+    return ur["z_over_b_0125"]
