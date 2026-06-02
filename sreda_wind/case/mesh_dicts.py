@@ -75,17 +75,26 @@ def block_mesh_dict(domain, mesh_spec, vertical_grading=2.0, boundary_types=None
 
 def snappy_hex_mesh_dict(mesh_spec, location_in_mesh, cell_budget,
                          stl_file="buildings.stl", surface_layers=0,
-                         layer_expansion=1.2, final_layer_thickness=0.5):
+                         layer_expansion=1.2, final_layer_thickness=0.5,
+                         ground_layers=0):
     """snappyHexMeshDict text. Buildings are snapped; trees are NOT here.
 
     location_in_mesh: (x, y, z) point known to be in the fluid region.
-    surface_layers > 0 adds that many prism/inflation layers at the buildings.
+    surface_layers > 0 adds prism/inflation layers at the buildings;
+    ground_layers > 0 adds them at the ground patch (needed for X_F).
     """
     box = mesh_spec.refinement_box
     lx, ly, lz = location_in_mesh
     s = mesh_spec.surface_level
     r = mesh_spec.region_level
-    add_layers = surface_layers and surface_layers > 0
+
+    # Patches that get prism layers: (patch name, layer count).
+    layer_patches = []
+    if surface_layers and surface_layers > 0:
+        layer_patches.append(("buildings", int(surface_layers)))
+    if ground_layers and ground_layers > 0:
+        layer_patches.append(("ground", int(ground_layers)))
+    add_layers = len(layer_patches) > 0
 
     parts = []
     parts.append(header("dictionary", "snappyHexMeshDict", location="system"))
@@ -152,10 +161,14 @@ def snappy_hex_mesh_dict(mesh_spec, location_in_mesh, cell_budget,
         parts.append("    relativeSizes       true;")
         parts.append("    layers")
         parts.append("    {")
-        parts.append("        buildings")
-        parts.append("        {")
-        parts.append("            nSurfaceLayers {};".format(int(surface_layers)))
-        parts.append("        }")
+        pi = 0
+        while pi < len(layer_patches):
+            patch, n = layer_patches[pi]
+            parts.append("        {}".format(patch))
+            parts.append("        {")
+            parts.append("            nSurfaceLayers {};".format(n))
+            parts.append("        }")
+            pi += 1
         parts.append("    }")
         parts.append("    expansionRatio      {};".format(layer_expansion))
         parts.append("    finalLayerThickness {};".format(final_layer_thickness))

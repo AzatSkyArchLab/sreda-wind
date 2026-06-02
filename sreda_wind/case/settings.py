@@ -64,6 +64,9 @@ class CaseSettings:
 
     # Surface (prism) layers at the building walls (0 -> addLayers off)
     surface_layers: int = 0
+    # Prism layers at the ground patch (0 -> none). The floor is where the wake
+    # reattachment X_F is measured, so it needs near-wall resolution too.
+    ground_layers: int = 0
     layer_expansion: float = 1.2
     final_layer_thickness: float = 0.5   # relative to local cell size
 

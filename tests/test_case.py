@@ -279,6 +279,24 @@ def test_snappy_surface_layers():
     assert "addLayers       false;" in none
 
 
+def test_snappy_ground_layers():
+    # Floor prism layers (for near-wall X_F resolution) add the ground patch to
+    # the layers dict; addLayers turns on even with no building layers.
+    bbox = BBox(0.0, 32.0, 0.0, 32.0)
+    domain = compute_domain(bbox, 64.0, 270.0)
+    spec = compute_mesh_spec(domain, bbox, 64.0)
+    text = mesh_dicts.snappy_hex_mesh_dict(
+        spec, (0.0, 0.0, 70.0), 3_000_000, surface_layers=3, ground_layers=2)
+    assert "addLayers       true;" in text
+    assert "buildings\n        {\n            nSurfaceLayers 3;" in text
+    assert "ground\n        {\n            nSurfaceLayers 2;" in text
+    # ground-only layers still enable addLayers
+    ground_only = mesh_dicts.snappy_hex_mesh_dict(
+        spec, (0.0, 0.0, 70.0), 3_000_000, surface_layers=0, ground_layers=2)
+    assert "addLayers       true;" in ground_only
+    assert "ground\n        {\n            nSurfaceLayers 2;" in ground_only
+
+
 def test_block_mesh_symmetry_types():
     bbox = BBox(0.0, 32.0, 0.0, 32.0)
     domain = compute_domain(bbox, 64.0, 270.0)

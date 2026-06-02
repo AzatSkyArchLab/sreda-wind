@@ -223,7 +223,8 @@ def generate_case(case_dir, buildings, direction_deg, speed,
                mesh_spec, location, settings.cell_budget,
                surface_layers=settings.surface_layers,
                layer_expansion=settings.layer_expansion,
-               final_layer_thickness=settings.final_layer_thickness), written)
+               final_layer_thickness=settings.final_layer_thickness,
+               ground_layers=settings.ground_layers), written)
     _write(case_dir, "system/controlDict",
            system_dicts.control_dict(settings), written)
     _write(case_dir, "system/fvSchemes",
