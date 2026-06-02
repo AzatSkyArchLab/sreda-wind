@@ -59,8 +59,13 @@ snappyHexMesh + surface (prism) layers is sanctioned (AIJ 2.1.7).
 ## 6. Numerics and model
 - Solver: foamRun -solver incompressibleFluid (OpenFOAM 13), steady RANS.
 - Convection: QUICK / linearUpwind (2nd order).
-- Turbulence (parameter): step 1 standard k-epsilon (reproduce KE1-KE5 base);
-  step 2 Realizable k-epsilon (roof reverse flow).
+- Turbulence (parameter): step 1 standard k-epsilon (reproduce KE1-KE5 base).
+- Baseline (recommended): **k-omega SST** — best reattachment of the OF13
+  Foundation models actually tested (X_F/b=1.00; see VALIDATION_RESULTS.md).
+  Realizable k-epsilon was tested but is NOT recommended (q=0.183, worse than
+  base; no production limiter, so it does not cure the stagnation-k anomaly).
+  Reproducing the AIJ "modified k-eps" family would need a production-limited
+  model (Kato-Launder / MMK / Durbin), absent in OF13 Foundation by default.
 
 ## 7. Reattachment-length validation (AIJ Table 2-1-3)
 Extract by linear interpolation to the sign reversal of the wall-adjacent
@@ -75,15 +80,26 @@ Report X_R/b, X_F/b. Targets:
 - LES:                        X_R = 0.92     X_F = 2.05
 
 Pass step 1 (std k-eps): no roof reverse flow (X_R absent) AND X_F ~ 2.0-2.7.
-Pass step 2 (Realizable): X_R ~ 0.5-0.6, X_F ~ 3.0-3.3.
+Tested result (OF13): X_R none (correct), X_F/b ~ 0.6-1.0 across kEpsilon /
+realizableKE / kOmegaSST — all under the family; kOmegaSST closest (1.00). The
+short bubble is the genuine model solution (mesh-refinement makes it shorter),
+driven by the std-k-eps stagnation-k over-production. See VALIDATION_RESULTS.md.
 
 ## 8. Comparison quantity and normalisation
 Pedestrian wind speed ratio = local scalar speed / inflow speed at same height.
-At z/b = 0.125 that reference speed is 2.75 m/s (AIJ 2.1.6.5); confirm from xls.
-For z/b = 1.25 use the inflow speed at that height.
-CFD side: ratio(point) = speed_CFD(point) / U_inflow_CFD(z_of_plane). Confirm
-from the xls header whether speed is full |U| or horizontal sqrt(u^2+v^2);
-match the CFD reduction and record in `quantity`.
+At z/b = 0.125 the reference speed is **2.935 m/s** (Meng & Hibi Table 1, the
+primary source; the AIJ guidebook text rounds this to 2.75). For z/b = 1.25 use
+4.021 m/s (Table 1). Quantity = horizontal speed sqrt(U^2+V^2) (AIJ near-ground
+convention) -> compare ratio_horizontal.
+CFD side: ratio(point) = speed_CFD(point) / U_inflow_CFD(z_of_plane).
+
+**Normalisation for the milestone (strict):** the Case A Level-1 milestone is
+q >= 0.66 on the DIRECT normalisation by the tabulated incident u_ref(z) from
+Table 1 (2.935 at z/b=0.125). This requires the CFD incident profile to be
+maintained (~2.935 at the building). Normalising CFD by its own building-free
+incident U(x) is a valid FALLBACK method (equivalent to how the experiment
+normalised by the maintained tunnel incident) and is reported, but it is NOT the
+milestone metric.
 
 ## 9. Measurement points
 - Vertical centre plane (y/b=0): 66 points.
@@ -98,19 +114,25 @@ match the CFD reduction and record in `quantity`.
 ## 10. Metrics (tests/aij/metrics.py)
 q, FAC2, NMSE, FB, R as defined in metrics.py (D=0.25, W=0.06).
 
-## 11. reference_data.json schema
+## 11. reference_data.json schema (actual — Meng & Hibi 1998, Tables 1-4)
 ```
 {
-  "case": "A", "b": 0.08, "ref_height": 0.16, "wind_direction_deg": 270,
-  "quantity": "horizontal_speed_ratio",
-  "u_ref_pedestrian": 2.75,
-  "inflow":  [ {"z": 0.01, "u": 2.75, "k": 0.30}, ... ],
-  "vertical":        [ {"id":1,"x":-0.06,"y":0.0,"z":0.01,"ratio":0.41}, ... ],
-  "horizontal_0125": [ {"id":1,"x":-0.06,"y":0.0,"z":0.01,"ratio":0.19}, ... ],
-  "horizontal_125":  [ {"id":1,"x":-0.06,"y":0.0,"z":0.10,"ratio":0.55}, ... ]
+  "case": "A", "b": 0.08, "h": 0.16, "wind_direction_deg": 270,
+  "reynolds_number": 24000.0,
+  "u_ref": { "z_over_b_0125": 2.935, "z_over_b_125": 4.021 },
+  "reattachment_targets": { "experiment": {...}, "per_case": {KE1..LES} },
+  "inflow_profile": { "points": [ {"z_over_b":.., "z":.., "u":.., "k":..}, ... ] },  // 24 levels, measured k
+  "pedestrian_ratios_z0125": { "points": [
+      {"id":1,"x_over_b":..,"y_over_b":..,"x":..,"y":..,"z":0.01,
+       "U":..,"V":..,"W":..,"speed_horizontal":..,"ratio_horizontal":..,"speed_3d":..,"ratio_3d":..}, ... ] },  // 60
+  "secondary_ratios_z125": { "points": [ ...60... ] },
+  "vertical_y0": { "points": [ {"id":1,"U":..,"V":..,"W":..,"speed_3d":..}, ... ] }  // 66, coords pending
 }
 ```
-Coordinates in metres. ratio = local speed / same-height inflow speed.
+Coordinates in metres. ratio_horizontal = sqrt(U^2+V^2)/u_ref (milestone
+quantity); ratio_3d = |U|/u_ref. Inflow k is the measured 0.5*(su^2+sv^2+sw^2);
+eps for the inlet is derived (inlet.py). The §11 placeholder (u=2.75, k=0.30,
+flat vertical/horizontal arrays) is superseded by this real structure.
 
 ## 12. Harness layout
 ```

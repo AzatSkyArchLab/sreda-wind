@@ -61,8 +61,20 @@ maintained tunnel incident, Table 1):
 | /2.935 (naive) | 0.533 | 0.867 | 0.114 | −0.256 | 0.850 |
 | **/building-free incident(x)** | **0.700** | 0.883 | 0.087 | +0.088 | 0.849 |
 
-**q = 0.70 ≥ 0.66 — PASSES AIJ.** FB ≈ 0. The building-induced perturbation field
-matches the experiment; the naive shortfall was entirely the incident drift.
+**q = 0.70 on the building-free-incident (FALLBACK) normalization — passes the
+0.66 threshold; FB ≈ 0.** This shows the building-induced perturbation field
+matches the experiment. It is NOT the milestone pass: the Case A Level-1
+milestone is q ≥ 0.66 on the DIRECT normalization by u_ref=2.935, which gives
+q = 0.533 (does not pass) because the incident profile drifts +40%.
+
+**Precursor attempt (to earn the direct-normalization pass).** A streamwise-cyclic
+rough-channel precursor (meanVelocityForce, same z0/model/wall-function) produces
+a self-sustaining profile with U(z/b=0.125)≈2.9 on its own mesh. Imposed on the
+main domain it STILL drifts (incident→4.2, q=0.45 on /2.935), because the k-eps
+equilibrium is mesh-dependent and the main domain's adaptive box-refined ground
+mesh differs from the precursor's. Maintaining the profile would require a
+consistent (uniform) near-ground mesh between precursor and main domain, or
+runtime mappedFixedValue with matched meshes — not yet done.
 
 ### y+ on the floor (first cell), with vs without prisms
 Direct test of the wall-function hypothesis (yPlus function object, ground patch):
@@ -80,13 +92,25 @@ prisms) → **hypothesis rejected**: the drift is independent of the y+ regime,
 confirming the non-equilibrium-profile cause. Prisms are kept (better floor y+;
 needed on the building for X_R/X_F).
 
-## Conclusion
-The pipeline is validated and reproducible. The building aerodynamics are
-captured (pedestrian q=0.70 with honest incident normalization, R≈0.85; correct
-no-roof-reattachment behaviour). Two model/methodology characteristics are
-documented, not bugs: (a) wake X_F is under-predicted by OF13 RANS without a
-production limiter — k-ω SST recommended baseline (X_F/b=1.00, best q-pattern
-R=0.86); (b) the measured non-equilibrium ABL does not self-sustain under high-Re
-RANS, handled by building-free incident normalization. Numbers reproduce via
-run_validation.py; raw cases live under /tmp and are regenerated from
-conditions.case_a_inputs.
+## Status: primary validation passed; /2.935 milestone pending inflow self-sustaining (precursor)
+
+**PROVEN.** The pipeline runs end-to-end and the building aerodynamics are
+captured: pedestrian hit rate q = 0.70 on the (fallback) incident normalization
+with FB ≈ 0 and R ≈ 0.85 — the building-induced perturbation field matches the
+experiment; correct qualitative behaviour (no roof reattachment, wake
+recirculation present). k-omega SST is the best-tested baseline (X_F/b = 1.00).
+
+**OPEN.** The Case A Level-1 milestone — q ≥ 0.66 on the DIRECT normalization by
+u_ref = 2.935 — is NOT yet met: on /2.935, q = 0.533. The cause is that the
+measured non-equilibrium ABL profile does not self-sustain under high-Re RANS,
+so the near-ground incident U drifts +40% along the fetch. The milestone
+requires the incident profile to be maintained (~2.935 at the building); a
+precursor with a near-ground mesh consistent with the main domain (or runtime
+mapping) is the remaining step.
+
+Two documented model/methodology characteristics (not bugs): (a) wake X_F is
+under-predicted by all OF13-Foundation RANS without a production limiter
+(k-omega SST closest, X_F/b=1.00); (b) the non-equilibrium ABL is not maintained
+under high-Re RANS — building-free incident normalization is a valid fallback for
+reporting q, but the milestone is on direct /u_ref. Numbers above reproduce via
+run_validation.py; raw cases regenerate from conditions.case_a_inputs.
