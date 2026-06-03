@@ -17,9 +17,26 @@ uses cell-centre values (true field, avoids near-wall interpolation artefacts).
   building-free-equivalent incident speed at that point's x, sampled at the far-
   lateral column y/b=-5 (undisturbed), z/b=0.125. `*_exp` columns are the
   measured Meng & Hibi values from reference_data.json.
-- `incident_fetch.csv` — building-free run (caseA_empty): near-ground U and k at
-  z/b=0.125 along the fetch, showing the +40% incident drift (and the k runaway
-  inside the refinement box). `ratio_vs_2935` = U/2.935.
+- `incident_fetch.csv` — building-free run (caseA_empty), MEASURED Meng & Hibi
+  inlet: near-ground U and k at z/b=0.125 along the fetch, showing the +40%
+  incident drift (and the k runaway inside the refinement box). `ratio_vs_2935`
+  = U/2.935.
+- `incident_fetch_equilibrium.csv` — same mesh/domain as incident_fetch.csv (the
+  adaptive box mesh), but with an EQUILIBRIUM Atmospheric-BL inlet
+  (atmBoundaryLayerInletVelocity/K/Epsilon, Richards-Hoxey; Uref=2.935 @
+  Zref=0.01, z0=1.8e-4). Result: it ALSO drifts to ~1.45 with the same k runaway
+  -> on the box mesh the drift is caused by the MESH, not the inlet profile
+  (measured and equilibrium behave identically). Fig-4 analog vs incident_fetch.
+- `incident_fetch_equilibrium_cleanmesh.csv` — equilibrium Atmospheric-BL inlet
+  on a CLEAN structured mesh (nz=50 grading 12, no adaptive box). Here k stays
+  constant at 0.30 (self-sustaining, as RH intends) and U holds to ratio 1.02 at
+  x/b=-2.5, but still creeps to ~1.10 at the building free column (x/b=-0.75) and
+  runs up downstream. So the equilibrium inlet self-sustains FAR better than the
+  measured profile, and the adaptive box mesh is the dominant drift cause; but a
+  residual ~10% horizontal inhomogeneity remains (known RANS-ABL effect, needs
+  Hargreaves-Wright wall-function consistency for <5%). The Step-1 criterion
+  (ratio <= 1.05 at x/b=-0.75) is therefore NOT met; Step 2 (with-building, q on
+  /2.935) was not run.
 - `reattachment_floor.csv` — wall-adjacent (z=0.002) streamwise Ux along the
   centreline (y=0) behind the building, both models. X_F is the first
   negative->positive sign change (kEpsilon ~0.76 b, kOmegaSST ~1.00 b).
