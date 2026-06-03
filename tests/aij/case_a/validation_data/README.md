@@ -49,3 +49,16 @@ uses cell-centre values (true field, avoids near-wall interpolation artefacts).
   scale-invariant so identical under either normalization).
 
 Units: lengths normalised by b=0.08 m where `*_over_b`; velocities in m/s.
+
+## Equilibrium-inlet with-building check (summary_metrics_equilibrium.csv)
+Case A WITH building on a clean structured mesh (uniform near-ground z, no
+adaptive box) + equilibrium Atmospheric-BL inlet, vs the box-mesh + measured-inlet
+baseline. `incident_xb075` = incident ratio at the free column x/b=-0.75 (the
+Step-1 criterion; <=1.05 means the profile is maintained).
+
+Result: the structured mesh does NOT degrade the building flow (R, FAC2, X_F
+comparable; NMSE and FB improved). But the incident still drifts to ~1.37 at the
+building on the well-resolved mesh (the building-free 1.10 was a coarse-y,
+under-resolved artefact). So the /2.935 milestone remains open: ABL
+self-sustainment worsens with refinement and needs Hargreaves-Wright
+wall-function consistency, not a mesh/inlet choice.

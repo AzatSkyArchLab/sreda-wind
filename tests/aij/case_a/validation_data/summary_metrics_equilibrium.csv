@@ -1,0 +1,3 @@
+config,inlet,mesh,incident_xb075,X_R,X_F,q_direct,q_incident,FAC2,NMSE,FB,R
+kepsilon_box_measured,measured_tabulated,adaptive_box,1.40,none,0.76,0.5333,0.7,0.8833,0.0837,-0.2560,0.849
+kepsilon_structured_equilibrium,atmBoundaryLayer,structured_nobox,1.374,none,0.72,0.4667,0.7333,0.883,0.0746,0.0461,0.8514
