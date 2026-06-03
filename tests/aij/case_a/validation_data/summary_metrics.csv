@@ -1,0 +1,3 @@
+model,X_R,X_F,q_direct,q_incident,FAC2,NMSE,FB,R
+kepsilon,none,0.76,0.5333,0.7,0.8833,0.0857,0.0837,0.849
+komega,none,1.00,0.3667,0.7167,0.8667,0.0676,0.0137,0.8586
