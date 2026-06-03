@@ -67,14 +67,28 @@ matches the experiment. It is NOT the milestone pass: the Case A Level-1
 milestone is q ≥ 0.66 on the DIRECT normalization by u_ref=2.935, which gives
 q = 0.533 (does not pass) because the incident profile drifts +40%.
 
-**Precursor attempt (to earn the direct-normalization pass).** A streamwise-cyclic
-rough-channel precursor (meanVelocityForce, same z0/model/wall-function) produces
-a self-sustaining profile with U(z/b=0.125)≈2.9 on its own mesh. Imposed on the
-main domain it STILL drifts (incident→4.2, q=0.45 on /2.935), because the k-eps
-equilibrium is mesh-dependent and the main domain's adaptive box-refined ground
-mesh differs from the precursor's. Maintaining the profile would require a
-consistent (uniform) near-ground mesh between precursor and main domain, or
-runtime mappedFixedValue with matched meshes — not yet done.
+**Precursor attempt (to earn the direct-normalization pass) — known WIP, not
+converged.** A streamwise-cyclic rough-channel precursor (meanVelocityForce,
+same z0/model/wall-function) was built and tuned (Ubar=5.72) to a self-sustaining
+profile with U(z/b=0.125)≈2.93 and healthy k≈0.31. It was then run on a
+near-ground z-mesh IDENTICAL to the main domain (structured blockMesh nz=50,
+grading 12, no adaptive box) to remove the earlier mesh-mismatch. Results
+(criterion: incident ratio ≤ 1.05 at x/b=-0.75 on /2.935):
+- matched-mesh main, precursor table inlet, force-free: ratio 1.086 (FAIL),
+  rising to 1.46 downstream.
+- + meanVelocityForce in the main domain: ratio 1.137 (FAIL).
+
+Root cause (RANS physics, not a pipeline bug): the measured Meng & Hibi profile
+is a NON-EQUILIBRIUM wind-tunnel BL (power-law U, varying k). In a force-free
+RANS domain only the zero-pressure-gradient equilibrium self-sustains
+(Richards & Hoxey: log U, k=u*^2/sqrt(Cmu) const, eps=u*^3/(kappa(z+z0))). The
+measured profile is not that equilibrium, so its k decays -> nut->0 -> the
+near-ground accelerates -> drift. The cyclic precursor's profile is balanced by
+a body force; that balance does not transfer to the force-free building domain,
+and importing the force distorts the building flow. Maintaining exactly the
+measured profile on /2.935 in standard force-free RANS is therefore not
+achievable; only an RH-type equilibrium self-sustains (different profile shape,
+explicitly out of scope for Case A). 4 precursor runs spent; stopped per plan.
 
 ### y+ on the floor (first cell), with vs without prisms
 Direct test of the wall-function hypothesis (yPlus function object, ground patch):
@@ -92,7 +106,7 @@ prisms) → **hypothesis rejected**: the drift is independent of the y+ regime,
 confirming the non-equilibrium-profile cause. Prisms are kept (better floor y+;
 needed on the building for X_R/X_F).
 
-## Status: primary validation passed; /2.935 milestone pending inflow self-sustaining (precursor)
+## Status: primary validation passed; /2.935 milestone OPEN (precursor not converged — RANS-ABL limit)
 
 **PROVEN.** The pipeline runs end-to-end and the building aerodynamics are
 captured: pedestrian hit rate q = 0.70 on the (fallback) incident normalization
@@ -100,13 +114,17 @@ with FB ≈ 0 and R ≈ 0.85 — the building-induced perturbation field matches
 experiment; correct qualitative behaviour (no roof reattachment, wake
 recirculation present). k-omega SST is the best-tested baseline (X_F/b = 1.00).
 
-**OPEN.** The Case A Level-1 milestone — q ≥ 0.66 on the DIRECT normalization by
-u_ref = 2.935 — is NOT yet met: on /2.935, q = 0.533. The cause is that the
-measured non-equilibrium ABL profile does not self-sustain under high-Re RANS,
-so the near-ground incident U drifts +40% along the fetch. The milestone
-requires the incident profile to be maintained (~2.935 at the building); a
-precursor with a near-ground mesh consistent with the main domain (or runtime
-mapping) is the remaining step.
+**OPEN (known WIP).** The Case A Level-1 milestone — q ≥ 0.66 on the DIRECT
+normalization by u_ref = 2.935 — is NOT met: on /2.935, q = 0.533. A
+matched-mesh streamwise-cyclic precursor was built and tuned (the standard fix)
+but did NOT converge the criterion (incident still drifts to ratio 1.086–1.137
+at the building vs the ≤1.05 target; see the precursor section). Root cause is
+RANS physics: the measured non-equilibrium profile does not self-sustain in a
+force-free domain — only an RH-type equilibrium does, which would change the
+Case A inflow. Closing the direct-normalization milestone would require either
+accepting an equilibrium (RH) inflow profile or a domain-wide forcing that
+distorts the building flow; both are out of the current scope. Stopped after 4
+precursor runs per plan.
 
 Two documented model/methodology characteristics (not bugs): (a) wake X_F is
 under-predicted by all OF13-Foundation RANS without a production limiter
