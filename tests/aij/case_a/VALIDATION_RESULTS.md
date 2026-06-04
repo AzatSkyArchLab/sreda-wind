@@ -106,7 +106,7 @@ prisms) → **hypothesis rejected**: the drift is independent of the y+ regime,
 confirming the non-equilibrium-profile cause. Prisms are kept (better floor y+;
 needed on the building for X_R/X_F).
 
-## Status: primary validation passed; /2.935 milestone OPEN (precursor not converged — RANS-ABL limit)
+## Status: primary validation passed; /2.935 milestone NOT met (best q_direct=0.650 via forced relaxation — engineering workaround); Case A CLOSED
 
 **PROVEN.** The pipeline runs end-to-end and the building aerodynamics are
 captured: pedestrian hit rate q = 0.70 on the (fallback) incident normalization
@@ -114,17 +114,36 @@ with FB ≈ 0 and R ≈ 0.85 — the building-induced perturbation field matches
 experiment; correct qualitative behaviour (no roof reattachment, wake
 recirculation present). k-omega SST is the best-tested baseline (X_F/b = 1.00).
 
-**OPEN (known WIP).** The Case A Level-1 milestone — q ≥ 0.66 on the DIRECT
-normalization by u_ref = 2.935 — is NOT met: on /2.935, q = 0.533. A
-matched-mesh streamwise-cyclic precursor was built and tuned (the standard fix)
-but did NOT converge the criterion (incident still drifts to ratio 1.086–1.137
-at the building vs the ≤1.05 target; see the precursor section). Root cause is
-RANS physics: the measured non-equilibrium profile does not self-sustain in a
-force-free domain — only an RH-type equilibrium does, which would change the
-Case A inflow. Closing the direct-normalization milestone would require either
-accepting an equilibrium (RH) inflow profile or a domain-wide forcing that
-distorts the building flow; both are out of the current scope. Stopped after 4
-precursor runs per plan.
+**OPEN — milestone NOT met (best q_direct = 0.650).** The Case A Level-1
+milestone (q ≥ 0.66 on DIRECT normalization by u_ref = 2.935) was pursued to its
+end. On the structured mesh + equilibrium atm inlet (canonical), q_direct = 0.467
+(kEps) / 0.433 (kOmega) — the incident drifts because the ABL does not
+self-sustain under high-Re RANS (precursor, σε=1.167, fixed top, const ground k
+all failed; the near-ground k runs away in the cells above the first).
+
+**Hargreaves–Wright + Parente attempts.** HW coefficient/BC consistency
+(σε=1.167, fixed atm top, const ground k) reduced but did not stop the drift
+(held to x/b=-2.5 at ratio 1.04, then 1.23 at the building). The final attempt
+implemented **Parente (2011) source terms** as a forced relaxation of k and ε
+(or ω) toward the RH equilibrium in the approach zone (x < -0.04) via a
+codedFvModel. Building-free this maintains the profile exactly (k = 0.298 const,
+incident ratio 1.009 at x/b=-0.75 ≤ 1.05). With the building, q_direct rose to
+**0.650 (kEps)** / 0.533 (kOmega) — kEps is just under 0.66. Full kEps metrics
+(incident norm): FAC2 0.883, NMSE 0.065, FB +0.001, R 0.855 — comparable/better
+than the unforced structured run.
+
+**Honest framing — this is an engineering workaround, not model
+self-sustainment.** The profile is held by a *forced* source-relaxation in the
+approach (a fringe/nudging zone), not by the turbulence model maintaining the
+ABL. The forcing also alters the building physics: it imposes a lower-k inflow,
+so X_F jumps (0.72 → 1.71 kEps; → 2.03 kOmega, which even gains a roof
+reattachment X_R = 0.96) — these are consequences of the imposed low-k approach,
+not pure model improvement. The residual gap (0.650 vs 0.66) is the far-wake
+background drift: the relaxation is off behind the box, so the un-forced wake
+(x/b = 2–3.25, mid-lateral) over-predicts by +0.3…+0.45 (e.g. pt 56: CFD 1.06
+vs exp 0.62). Per the plan this was the final inflow attempt; **Case A is closed
+here regardless of outcome.** Data: incident_fetch_parente.csv,
+pedestrian_z0125_{kepsilon,komega}_parente.csv, summary_metrics_parente.csv.
 
 Two documented model/methodology characteristics (not bugs): (a) wake X_F is
 under-predicted by all OF13-Foundation RANS without a production limiter
