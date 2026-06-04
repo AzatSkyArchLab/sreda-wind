@@ -1,5 +1,52 @@
 # AIJ Case A — validation results (sreda-wind, OpenFOAM 13)
 
+> ## ⚠️ CONVERGENCE CORRECTION (2026-06-04) — supersedes the q numbers below
+>
+> The earlier q values (including the "canonical" **q_incident = 0.733**) were
+> taken from **UNDER-CONVERGED** fields. Every prior run stopped at endTime 2000
+> with the p initial residual on a **plateau ~3–5e-3** (never the 1e-6 control
+> target) — there is no convergence message in any log. A steady RANS solution
+> read off a residual plateau is not a solution.
+>
+> This was exposed by reproducing the canon with the new parameterised runner
+> (byte-identical mesh, 415 404 cells, and every dict matching /tmp/caseA_eqbld).
+> The **only** input difference was the `internalField` k seed: the canon seeded
+> k = 62.6 (×211 the equilibrium value), the runner seeds the physical
+> equilibrium k = u*²/√Cμ = 0.296. q then differed (0.617 vs 0.733), which for a
+> steady RANS **proves under-convergence** — a converged steady solution is
+> independent of the initial field.
+>
+> Driving each seed to a true fixed point (monitor probe + window averaging):
+> - **Physical seed (k = 0.296):** probe |U| **FREEZES** (spread 0.0012 %),
+>   **q_incident = 0.617 ± 0.000** over a 40-field / 2000-iter plateau window — a
+>   genuine steady solution. This is the corrected standard-k-ε Case A result.
+> - **Canon high-k seed, continued:** does **not** freeze — a **limit cycle**
+>   (probe ±2.1 %), q_incident wandering **0.667–0.817** (band ±0.075). The
+>   published 0.733 was a single snapshot of that oscillation.
+>
+> **Verdict.** Standard k-ε on Case A, properly converged, gives
+> **q_incident ≈ 0.617 — it does NOT pass AIJ q ≥ 0.66.** This is the known k-ε
+> limitation on massive separation (stagnation k over-production over-mixes /
+> shortens the wake), consistent with finding #1 below. The previous 0.733 is
+> **RETRACTED** as an under-convergence artefact of a non-physical high-k seed.
+>
+> **k-ω SST (physical seed) observation:** does not reach a steady state at all —
+> probe swings ±125 %, p residual plateaus ~0.10. k-ω SST is less diffusive and
+> resolves the genuinely unsteady cube-wake shedding, so the *steady* solver
+> cannot converge. A meaningful k-ω q needs **URANS** (transient + cycle
+> averaging) — **deferred to backlog**, not pursued here.
+>
+> **Rule now enforced in code:** every case seeds the physical equilibrium
+> turbulence (the generator computes k/ε/ω from `abl_parameters`; an arbitrary
+> high seed is impossible), adds monitor probes, and a quantity is taken ONLY
+> after the probe freezes (`RunResult.stationary` via `_monitor_stationarity` +
+> `solver.convergence.window_stat`). A residual plateau is not proof of a steady
+> solution; only a frozen probe is.
+>
+> **Case A is CLOSED at the honest converged result: steady std k-ε,
+> q_incident = 0.617, below the AIJ 0.66 target.** The narrative below is kept as
+> the investigation record; read its q numbers as under-converged.
+
 First end-to-end validation of the isolated 1:1:2 building against Meng & Hibi
 (1998). Model scale b=0.08, h=0.16; measured inflow (Table 1), 60 pedestrian
 points (Table 3). All runs: tabulated inflow (real measured U, k), rough floor
