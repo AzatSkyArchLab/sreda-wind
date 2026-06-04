@@ -66,7 +66,7 @@ def compute_mesh_spec(domain, geometry_bbox, H, target_facade_cell=2.0,
                       cell_budget=3_000_000, min_base_cell=4.0):
     """Compute an adaptive MeshSpec that fits within cell_budget.
 
-    domain: a core.domain.Domain. geometry_bbox: a core.domain.BBox of the
+    domain: a core.box.Domain. geometry_bbox: a core.box.BBox of the
     obstacles. H: characteristic height. target_facade_cell: desired cell size
     next to the facades. cell_budget: hard ceiling on the estimated cell count.
     """

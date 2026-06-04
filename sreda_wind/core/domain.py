@@ -1,36 +1,23 @@
-"""Computational domain sizing following COST 732 / AIJ recommendations.
+"""Generic COST 732 / AIJ domain sizing -- PARKED, NOT in the build path.
+
+NOT used in the AIJ validation path; parked for a possible future general city
+engine. The working case-build path (runner -> generate_case) takes the domain
+explicitly from the AIJ case spec instead, so a generic formula can never
+silently substitute the validated wind-tunnel geometry. This module is kept (it
+is unit-tested and may seed a future product city engine) but nothing in the
+build path imports or calls it.
 
 The blockMesh box is axis-aligned. The streamwise axis (most aligned with the
 flow) gets the inlet padding upstream and the outlet padding downstream; the
 cross-stream axis gets symmetric lateral padding; the top is the height
 padding. All paddings are multiples of the obstacle height H.
-
-Note: for a diagonal wind the dominant axis is treated as streamwise. This is
-exact for axis-aligned winds (cardinal directions) and a reasonable
-approximation otherwise.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .box import BBox, Domain
 from .wind import flow_vector
-
-
-@dataclass(frozen=True)
-class BBox:
-    """Axis-aligned footprint bounding box of the obstacles."""
-    xmin: float
-    xmax: float
-    ymin: float
-    ymax: float
-
-    @property
-    def width(self):
-        return self.xmax - self.xmin
-
-    @property
-    def depth(self):
-        return self.ymax - self.ymin
 
 
 @dataclass(frozen=True)
@@ -40,29 +27,6 @@ class DomainFactors:
     outlet: float = 8.0
     lateral: float = 2.5
     height: float = 5.0
-
-
-@dataclass(frozen=True)
-class Domain:
-    xmin: float
-    xmax: float
-    ymin: float
-    ymax: float
-    zmin: float
-    zmax: float
-    streamwise_axis: str   # "x" or "y"
-
-    @property
-    def width(self):
-        return self.xmax - self.xmin
-
-    @property
-    def depth(self):
-        return self.ymax - self.ymin
-
-    @property
-    def height(self):
-        return self.zmax - self.zmin
 
 
 def compute_domain(bbox, H, direction_deg, factors=None):
