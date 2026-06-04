@@ -106,7 +106,7 @@ prisms) → **hypothesis rejected**: the drift is independent of the y+ regime,
 confirming the non-equilibrium-profile cause. Prisms are kept (better floor y+;
 needed on the building for X_R/X_F).
 
-## Status: primary validation passed; /2.935 milestone NOT met (best q_direct=0.650 via forced relaxation — engineering workaround); Case A CLOSED
+## Status: primary validation passed (canonical = unforced structured + incident norm); /2.935 milestone KNOWN WIP (forced relaxation tested & rejected — distorts physics); Case A CLOSED
 
 **PROVEN.** The pipeline runs end-to-end and the building aerodynamics are
 captured: pedestrian hit rate q = 0.70 on the (fallback) incident normalization
@@ -132,18 +132,31 @@ incident ratio 1.009 at x/b=-0.75 ≤ 1.05). With the building, q_direct rose to
 (incident norm): FAC2 0.883, NMSE 0.065, FB +0.001, R 0.855 — comparable/better
 than the unforced structured run.
 
-**Honest framing — this is an engineering workaround, not model
-self-sustainment.** The profile is held by a *forced* source-relaxation in the
-approach (a fringe/nudging zone), not by the turbulence model maintaining the
-ABL. The forcing also alters the building physics: it imposes a lower-k inflow,
-so X_F jumps (0.72 → 1.71 kEps; → 2.03 kOmega, which even gains a roof
-reattachment X_R = 0.96) — these are consequences of the imposed low-k approach,
-not pure model improvement. The residual gap (0.650 vs 0.66) is the far-wake
-background drift: the relaxation is off behind the box, so the un-forced wake
-(x/b = 2–3.25, mid-lateral) over-predicts by +0.3…+0.45 (e.g. pt 56: CFD 1.06
-vs exp 0.62). Per the plan this was the final inflow attempt; **Case A is closed
-here regardless of outcome.** Data: incident_fetch_parente.csv,
-pedestrian_z0125_{kepsilon,komega}_parente.csv, summary_metrics_parente.csv.
+**Forced relaxation is a TESTED-AND-REJECTED workaround — NOT recommended.** The
+profile is held by a *forced* source-relaxation in the approach (a fringe/nudging
+zone), i.e. forcing the field toward the answer, NOT by the turbulence model
+maintaining the ABL. It distorts the field and is rejected as a method:
+- it imposes a lower-k inflow, so the building sees the wrong incident turbulence.
+  X_F jumps (0.72 → 1.71 kEps; → 2.03 kOmega) and kOmega even gains a roof
+  reattachment X_R = 0.96 — these are ARTEFACTS of the imposed low-k approach
+  (low k makes the roof separate / lengthens the wake), NOT model improvement,
+  exactly like the X_F change. Do not read them as better agreement.
+- q_incident is even slightly worse (0.717 vs 0.733 unforced), and the far-wake
+  is inflated: the relaxation is off behind the box, so the un-forced wake
+  (x/b = 2–3.25, mid-lateral) over-predicts by +0.3…+0.45 (e.g. pt 56: CFD 1.06
+  vs exp 0.62) — this is what holds q_direct at 0.650, below 0.66.
+
+**Recommended baseline (canonical for the article): UNFORCED structured mesh +
+equilibrium atm inlet, incident normalization** — kEps q_incident = 0.733,
+R = 0.851, FAC2 = 0.883, X_F = 0.72; kOmega q_incident = 0.717, R = 0.877,
+X_F = 1.06 (summary_metrics_structured.csv). The forced run is archived only
+(incident_fetch_parente.csv, pedestrian_z0125_{kepsilon,komega}_parente.csv,
+summary_metrics_parente.csv) as a tested, rejected workaround.
+
+**Direct /2.935 milestone status: KNOWN WIP.** Closing it properly needs
+turbulence-model-consistent ABL source terms (a custom near-wall formulation that
+makes the model self-sustain the profile), NOT forcing toward the answer.
+Per the plan this was the final inflow attempt; **Case A is closed here.**
 
 Two documented model/methodology characteristics (not bugs): (a) wake X_F is
 under-predicted by all OF13-Foundation RANS without a production limiter
