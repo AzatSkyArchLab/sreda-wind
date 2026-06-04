@@ -8,13 +8,14 @@ from .logparse import (
     parse_solver_log, parse_command_log, has_fatal, fatal_message,
 )
 from .convergence import (
-    ConvergenceReport, is_converged, is_stationary, evaluate,
+    ConvergenceReport, WindowStat, is_converged, is_stationary, window_stat, evaluate,
 )
 from .runner import RunConfig, RunResult, run
 
 __all__ = [
     "TimeStep", "SolverLog", "CommandLog",
     "parse_solver_log", "parse_command_log", "has_fatal", "fatal_message",
-    "ConvergenceReport", "is_converged", "is_stationary", "evaluate",
+    "ConvergenceReport", "WindowStat", "is_converged", "is_stationary",
+    "window_stat", "evaluate",
     "RunConfig", "RunResult", "run",
 ]

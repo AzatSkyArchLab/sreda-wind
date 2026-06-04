@@ -22,11 +22,12 @@ _FACES = (
 )
 
 
-def block_mesh_dict(domain, mesh_spec, vertical_grading=2.0, boundary_types=None):
-    """blockMeshDict text for the background hex mesh.
+def _block_mesh_text(domain, nx, ny, nz, vertical_grading, boundary_types):
+    """blockMeshDict text for one graded hex block with the given resolution.
 
-    boundary_types: optional {patch_name: type} overriding the default patch
-    types (e.g. "symmetry" for confined side/top patches). ground stays a wall.
+    Shared by the adaptive (block_mesh_dict) and structured
+    (structured_block_mesh_dict) entry points — they differ only in where the
+    cell counts and vertical grading come from.
     """
     if boundary_types is None:
         boundary_types = {}
@@ -54,7 +55,7 @@ def block_mesh_dict(domain, mesh_spec, vertical_grading=2.0, boundary_types=None
     parts.append("blocks")
     parts.append("(")
     parts.append("    hex (0 1 2 3 4 5 6 7) ({} {} {}) simpleGrading (1 1 {})".format(
-        mesh_spec.nx, mesh_spec.ny, mesh_spec.nz, vertical_grading))
+        nx, ny, nz, vertical_grading))
     parts.append(");")
     parts.append("")
     parts.append("boundary")
@@ -71,6 +72,37 @@ def block_mesh_dict(domain, mesh_spec, vertical_grading=2.0, boundary_types=None
         i += 1
     parts.append(");")
     return "\n".join(parts) + FOOTER
+
+
+def block_mesh_dict(domain, mesh_spec, vertical_grading=2.0, boundary_types=None):
+    """blockMeshDict text for the adaptive background hex mesh.
+
+    Cell counts come from the (adaptive) MeshSpec. boundary_types: optional
+    {patch_name: type} overriding the default patch types (e.g. "symmetry" for
+    confined side/top patches). ground stays a wall.
+    """
+    return _block_mesh_text(domain, mesh_spec.nx, mesh_spec.ny, mesh_spec.nz,
+                            vertical_grading, boundary_types)
+
+
+def structured_block_mesh_dict(domain, base_cell, nz, vertical_grading=12.0,
+                               boundary_types=None):
+    """blockMeshDict text for a structured graded background block.
+
+    Horizontal cell counts come from a uniform base_cell over the domain extent;
+    the vertical direction has nz cells with a strong simpleGrading (fine near
+    the ground). This is the AIJ Case A mesh (e.g. nz=50, grading 12) generalised
+    to any domain. snappyHexMesh still snaps the buildings into this block.
+    """
+    lx = domain.xmax - domain.xmin
+    ly = domain.ymax - domain.ymin
+    nx = int(round(lx / base_cell))
+    ny = int(round(ly / base_cell))
+    if nx < 1:
+        nx = 1
+    if ny < 1:
+        ny = 1
+    return _block_mesh_text(domain, nx, ny, nz, vertical_grading, boundary_types)
 
 
 def snappy_hex_mesh_dict(mesh_spec, location_in_mesh, cell_budget,

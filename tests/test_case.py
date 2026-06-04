@@ -10,10 +10,16 @@ from sreda_wind.case import (
 )
 from sreda_wind.case import boundary, fields, mesh_dicts, system_dicts, constant_dicts, porous
 from sreda_wind.case.boundary import InletContext
-from sreda_wind.core import compute_domain, compute_mesh_spec, BBox
+from sreda_wind.core import compute_domain, compute_mesh_spec, BBox, Domain
 
 # A 32 m cube footprint (AIJ Case A scale: H = 64).
 SQUARE = [(0.0, 0.0), (32.0, 0.0), (32.0, 32.0), (0.0, 32.0)]
+
+# Explicit test domains (the build path no longer sizes a domain itself; the
+# generic COST 732 sizer is parked). These are plain fixture boxes generous
+# enough around the test buildings.
+DOMAIN_64 = Domain(-200.0, 400.0, -200.0, 200.0, 0.0, 320.0, "x")
+DOMAIN_AIJ = Domain(-0.4, 0.6, -0.4, 0.4, 0.0, 0.8, "x")
 
 
 def _ctx():
@@ -154,7 +160,7 @@ def test_generate_case_writes_all_files(tmp_path):
     result = generate_case(
         case_dir,
         buildings=[Building(footprint=SQUARE, height=64.0)],
-        direction_deg=270.0, speed=5.0,
+        direction_deg=270.0, speed=5.0, domain=DOMAIN_64,
         settings=CaseSettings(iterations=100))
 
     expected = [
@@ -191,7 +197,7 @@ def test_generate_case_komega_writes_omega(tmp_path):
     generate_case(
         case_dir,
         buildings=[Building(footprint=SQUARE, height=64.0)],
-        direction_deg=270.0, speed=5.0,
+        direction_deg=270.0, speed=5.0, domain=DOMAIN_64,
         settings=CaseSettings(turbulence_model="kOmegaSST"))
     assert os.path.exists(os.path.join(case_dir, "0/omega"))
     assert not os.path.exists(os.path.join(case_dir, "0/epsilon"))
@@ -204,7 +210,7 @@ def test_generate_case_with_trees_writes_porous(tmp_path):
     generate_case(
         case_dir,
         buildings=[Building(footprint=SQUARE, height=64.0)],
-        direction_deg=270.0, speed=5.0,
+        direction_deg=270.0, speed=5.0, domain=DOMAIN_64,
         porous_zones=zones)
     assert os.path.exists(os.path.join(case_dir, "system/topoSetDict"))
     with open(os.path.join(case_dir, "constant/fvOptions")) as f:
@@ -214,7 +220,7 @@ def test_generate_case_with_trees_writes_porous(tmp_path):
 def test_generate_case_rejects_empty(tmp_path):
     with pytest.raises(ValueError):
         generate_case(str(tmp_path / "empty"), buildings=[],
-                      direction_deg=270.0, speed=5.0)
+                      direction_deg=270.0, speed=5.0, domain=DOMAIN_64)
 
 
 # --- AIJ extensions: symmetry / rough wall / tabulated inlet / layers --------
@@ -318,7 +324,7 @@ def test_generate_case_aij_style(tmp_path):
         case_dir,
         buildings=[Building(footprint=[(-0.04, -0.04), (0.04, -0.04),
                                        (0.04, 0.04), (-0.04, 0.04)], height=0.16)],
-        direction_deg=270.0, speed=2.75,
+        direction_deg=270.0, speed=2.75, domain=DOMAIN_AIJ,
         settings=settings, inlet_profile=PROFILE)
 
     assert result.patch_types["yMin"] == "symmetry"
@@ -345,7 +351,7 @@ def test_location_moved_when_inside_building(tmp_path):
     centred = [(-16.0, -16.0), (16.0, -16.0), (16.0, 16.0), (-16.0, 16.0)]
     case_dir = str(tmp_path / "case_centre")
     generate_case(case_dir, buildings=[Building(footprint=centred, height=64.0)],
-                  direction_deg=270.0, speed=5.0)
+                  direction_deg=270.0, speed=5.0, domain=DOMAIN_64)
     with open(os.path.join(case_dir, "system/snappyHexMeshDict")) as f:
         text = f.read()
     # The relocated point must not be (0 0 ...) which is inside the footprint.

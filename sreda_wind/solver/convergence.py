@@ -79,6 +79,69 @@ def is_stationary(series, rel_tol=DEFAULT_REL_TOL, window=DEFAULT_WINDOW):
 
 
 @dataclass
+class WindowStat:
+    """Plateau-window statistics of a scalar of interest (e.g. a hit rate q).
+
+    For a steady RANS that does NOT converge to a single field -- residuals
+    plateau above the control target while the flow is mildly unsteady (massive
+    separation, e.g. AIJ Case A) -- a derived scalar is defined by its average
+    over a window of plateau snapshots PLUS an uncertainty band, never a single
+    snapshot. ``narrow`` is True when the band is tight (averaging is honest) and
+    False when the scatter is wide (the mean hides real uncertainty -> report the
+    band, or move to URANS).
+    """
+    mean: float = 0.0
+    std: float = 0.0
+    minimum: float = 0.0
+    maximum: float = 0.0
+    half_band: float = 0.0    # (max - min) / 2
+    n: int = 0
+    narrow: bool = False      # band within rel_tol -> averaging legitimate
+
+
+def window_stat(values, rel_tol=DEFAULT_REL_TOL):
+    """Mean and uncertainty band of a quantity over a plateau window.
+
+    values: per-snapshot scalars sampled across the plateau (e.g. q from each of
+    N saved fields, or a probe series). Returns a WindowStat. ``narrow`` is True
+    when (max - min) <= rel_tol * |mean| (a near-zero mean uses the bound
+    absolutely); then the mean is a trustworthy representative value. A wide band
+    means the single-snapshot value is unreliable.
+    """
+    n = len(values)
+    if n == 0:
+        return WindowStat()
+    smallest = values[0]
+    largest = values[0]
+    total = 0.0
+    i = 0
+    while i < n:
+        v = values[i]
+        if v < smallest:
+            smallest = v
+        if v > largest:
+            largest = v
+        total += v
+        i += 1
+    mean = total / n
+    var = 0.0
+    i = 0
+    while i < n:
+        d = values[i] - mean
+        var += d * d
+        i += 1
+    std = math.sqrt(var / n)
+    spread = largest - smallest
+    scale = abs(mean)
+    if scale < 1.0e-12:
+        narrow = spread <= rel_tol
+    else:
+        narrow = spread <= rel_tol * scale
+    return WindowStat(mean=mean, std=std, minimum=smallest, maximum=largest,
+                      half_band=spread / 2.0, n=n, narrow=narrow)
+
+
+@dataclass
 class ConvergenceReport:
     """Combined verdict for one run."""
     status: str = "not_converged"   # converged | not_converged | diverged | failed

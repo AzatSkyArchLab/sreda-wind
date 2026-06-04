@@ -2,7 +2,7 @@
 import pytest
 
 from sreda_wind.solver import (
-    parse_solver_log, is_converged, is_stationary, evaluate,
+    parse_solver_log, is_converged, is_stationary, evaluate, window_stat,
 )
 
 
@@ -99,6 +99,36 @@ def test_is_stationary_on_real_probe_series():
            3.8178, 3.8102, 3.8027, 3.7955, 3.7886, 3.7819]
     assert is_stationary(tail, rel_tol=0.01, window=20) is True
     assert is_stationary(dev, rel_tol=0.01, window=20) is False
+
+
+# --- window_stat (plateau-window q for non-converging steady RANS) ---------
+
+def test_window_stat_narrow_band():
+    # A frozen/settled plateau: q identical across snapshots -> narrow, the mean
+    # is trustworthy (this is the AIJ Case A equilibrium-seed outcome).
+    vals = [0.6167, 0.6167, 0.6167, 0.6167, 0.6167]
+    ws = window_stat(vals)
+    assert ws.n == 5
+    assert ws.mean == pytest.approx(0.6167)
+    assert ws.half_band == pytest.approx(0.0)
+    assert ws.narrow is True
+
+
+def test_window_stat_wide_band_not_narrow():
+    # Wide scatter (0.55-0.75): averaging hides the uncertainty -> not narrow,
+    # the band must be reported (or move to URANS).
+    vals = [0.55, 0.62, 0.75, 0.60, 0.71]
+    ws = window_stat(vals, rel_tol=0.01)
+    assert ws.minimum == pytest.approx(0.55)
+    assert ws.maximum == pytest.approx(0.75)
+    assert ws.half_band == pytest.approx(0.10)
+    assert ws.narrow is False
+    assert ws.std > 0.0
+
+
+def test_window_stat_empty():
+    ws = window_stat([])
+    assert ws.n == 0 and ws.mean == 0.0
 
 
 # --- evaluate (combined verdict) -------------------------------------------

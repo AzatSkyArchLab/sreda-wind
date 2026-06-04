@@ -25,6 +25,7 @@ import time
 from dataclasses import dataclass, field
 
 from ..case import generate_case, CaseSettings
+from ..core.box import Domain
 from . import logparse, convergence
 
 OPENFOAM_VERSION = "13"
@@ -48,15 +49,22 @@ class RunConfig:
     """Everything needed to build and run one case."""
     name: str
     buildings: list                       # list of Building
+    domain: Domain = None                 # explicit blockMesh box (AIJ case spec)
     direction_deg: float = 270.0
     speed: float = 5.0
     turbulence_model: str = "kEpsilon"
     mesh_type: str = "box"                # box | structured
     inlet_type: str = "measured"          # measured | equilibrium
     inlet_profile: tuple = None           # ((z, u, k, eps), ...) for measured
+    structured_base_cell: float = 0.01    # structured mesh horizontal cell [m]
+    structured_nz: int = 50               # structured mesh vertical cells
+    structured_grading: float = 12.0      # structured mesh vertical grading
+    structured_surface_level: int = 1     # building snap level (nobox snappy)
+    monitor_points: tuple = ()            # stationarity-gate probe locations
     u_ref: float = 5.0                    # equilibrium Uref
     z_ref: float = 10.0                   # equilibrium Zref
-    ground_z0: float = 0.0
+    z0: float = 0.5                       # inlet aerodynamic roughness length [m]
+    ground_z0: float = 0.0                # ground rough-wall z0 (0 -> smooth)
     side_top_symmetry: bool = False
     surface_layers: int = 0
     ground_layers: int = 0
@@ -72,13 +80,26 @@ class RunConfig:
         out = {}
         out["name"] = self.name
         out["n_buildings"] = len(self.buildings)
+        if self.domain is None:
+            out["domain"] = None
+        else:
+            d = self.domain
+            out["domain"] = {"xmin": d.xmin, "xmax": d.xmax, "ymin": d.ymin,
+                             "ymax": d.ymax, "zmin": d.zmin, "zmax": d.zmax,
+                             "streamwise_axis": d.streamwise_axis}
         out["direction_deg"] = self.direction_deg
         out["speed"] = self.speed
         out["turbulence_model"] = self.turbulence_model
         out["mesh_type"] = self.mesh_type
         out["inlet_type"] = self.inlet_type
+        out["structured_base_cell"] = self.structured_base_cell
+        out["structured_nz"] = self.structured_nz
+        out["structured_grading"] = self.structured_grading
+        out["structured_surface_level"] = self.structured_surface_level
+        out["monitor_points"] = len(self.monitor_points)
         out["u_ref"] = self.u_ref
         out["z_ref"] = self.z_ref
+        out["z0"] = self.z0
         out["ground_z0"] = self.ground_z0
         out["side_top_symmetry"] = self.side_top_symmetry
         out["surface_layers"] = self.surface_layers
@@ -106,6 +127,8 @@ class RunResult:
     manifest_path: str = ""
     stages: dict = field(default_factory=dict)   # stage -> status
     message: str = ""
+    stationary: bool = None     # monitor probe froze? (None if no monitor)
+    monitor_band: float = 0.0   # half-band of |U| over the last plateau window
 
 
 def _settings(config):
@@ -114,6 +137,7 @@ def _settings(config):
         turbulence_model=config.turbulence_model,
         iterations=config.iterations,
         residual_control=config.residual_target,
+        z0=config.z0,
         ground_z0=config.ground_z0,
         side_top_symmetry=config.side_top_symmetry,
         surface_layers=config.surface_layers,
@@ -122,7 +146,12 @@ def _settings(config):
         min_base_cell=config.min_base_cell,
         min_building_area=config.min_building_area,
         cell_budget=config.cell_budget,
-        z_ref=config.z_ref)
+        z_ref=config.z_ref,
+        structured_base_cell=config.structured_base_cell,
+        structured_nz=config.structured_nz,
+        structured_grading=config.structured_grading,
+        structured_surface_level=config.structured_surface_level,
+        monitor_points=config.monitor_points)
 
 
 _COEFF_MARKER = "    printCoeffs     on;\n}"
@@ -157,23 +186,26 @@ def _inject_coeffs(case_dir, model, coeffs):
 
 
 def build_case(config, case_dir):
-    """Build the case directory from the config (box+measured implemented).
+    """Build the case directory from the config.
 
-    mesh_type=structured and inlet_type=equilibrium reuse the recipes validated
-    in the Case A study; box+measured uses case/ directly. Returns nothing; the
-    case is on disk.
+    mesh_type box->adaptive / structured->structured graded block; inlet_type
+    measured->coded (Richards-Hoxey or tabulated profile) / equilibrium->
+    atmBoundaryLayerInlet. Both variants reuse the recipes validated in the Case A
+    study, parameterised by the config. Returns nothing; the case is on disk.
     """
     settings = _settings(config)
     profile = config.inlet_profile if config.inlet_type == "measured" else None
+    mesh_type = "structured" if config.mesh_type == "structured" else "adaptive"
+    inlet_type = "equilibrium" if config.inlet_type == "equilibrium" else "coded"
+    if inlet_type == "equilibrium":
+        # A Richards & Hoxey equilibrium ABL is only self-consistent when the
+        # ground rough-wall roughness equals the inlet roughness. Drive both from
+        # the single inlet z0 so they can never silently disagree.
+        settings.ground_z0 = config.z0
     generate_case(case_dir, config.buildings, config.direction_deg, config.speed,
-                  settings=settings, inlet_profile=profile)
+                  config.domain, settings=settings, inlet_profile=profile,
+                  mesh_type=mesh_type, inlet_type=inlet_type)
     _inject_coeffs(case_dir, config.turbulence_model, config.coeffs)
-    if config.mesh_type != "box" or config.inlet_type != "measured":
-        # Structured-mesh / equilibrium-inlet variants are folded in here (the
-        # /tmp recipes from the Case A study). Not needed for box+measured.
-        raise NotImplementedError(
-            "mesh_type={}, inlet_type={} not yet wired into the runner".format(
-                config.mesh_type, config.inlet_type))
 
 
 def _has_geometry(config):
@@ -227,6 +259,52 @@ def _read(path):
     if not os.path.exists(path):
         return ""
     return open(path, errors="ignore").read()
+
+
+def _monitor_stationarity(case_dir, window=20, rel_tol=0.01):
+    """Read the monitor-probe series and judge whether the field froze.
+
+    Builds the horizontal-speed |U| series at the first probe across all written
+    iterations and runs window_stat over the last `window` samples. Returns
+    (stationary, half_band) or (None, 0.0) if no probe data exists. A frozen
+    probe (narrow band) means a true steady solution was reached; a wide band
+    means the residual plateau hides a limit cycle (take q from a window).
+    """
+    base = os.path.join(case_dir, "postProcessing", "monitorProbes")
+    if not os.path.isdir(base):
+        return None, 0.0
+    series = []
+    subdirs = sorted(os.listdir(base), key=_safe_float)
+    di = 0
+    while di < len(subdirs):
+        path = os.path.join(base, subdirs[di], "U")
+        if os.path.exists(path):
+            for line in open(path, errors="ignore"):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                split = line.split("(", 1)
+                if len(split) < 2:
+                    continue
+                comps = split[1].split(")", 1)[0].split()
+                if len(comps) < 2:
+                    continue
+                ux = float(comps[0])
+                uy = float(comps[1])
+                series.append((ux * ux + uy * uy) ** 0.5)
+        di += 1
+    if len(series) < window:
+        return None, 0.0
+    tail = series[len(series) - window:]
+    stat = convergence.window_stat(tail, rel_tol=rel_tol)
+    return stat.narrow, stat.half_band
+
+
+def _safe_float(s):
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
 
 
 def run(config, work_dir, timeouts=None, foam_bashrc=DEFAULT_FOAM_BASHRC, clock=time.time):
@@ -315,9 +393,15 @@ def run(config, work_dir, timeouts=None, foam_bashrc=DEFAULT_FOAM_BASHRC, clock=
             result.n_iterations = log.n_steps
             result.final_residuals = dict(log.final_residuals)
             result.converged = rep.converged
+            # Stationarity gate: did the monitor probe freeze? A residual plateau
+            # is NOT proof of a steady solution -- only a frozen probe is.
+            stationary, band = _monitor_stationarity(case_dir)
+            result.stationary = stationary
+            result.monitor_band = band
             manifest["stages"][stage] = {
                 "status": rep.status, "seconds": elapsed,
-                "n_iterations": log.n_steps, "diverged": log.diverged, "fatal": log.fatal}
+                "n_iterations": log.n_steps, "diverged": log.diverged, "fatal": log.fatal,
+                "stationary": stationary, "monitor_band": band}
             result.stages[stage] = rep.status
             if rep.status in ("failed", "diverged"):
                 return finish(rep.status, "foamRun {}: {}".format(rep.status, log.divergence_reason))

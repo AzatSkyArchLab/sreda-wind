@@ -13,13 +13,13 @@ import os
 from dataclasses import dataclass
 
 from ..core.abl import abl_parameters
-from ..core.domain import BBox, compute_domain
+from ..core.box import BBox
 from ..core.mesh import compute_mesh_spec
 from ..core.wind import flow_vector, inflow_velocity
 from ..geometry import extrude_footprint, merge, validate_polygon, write_ascii
 from . import constant_dicts, fields, mesh_dicts, porous, system_dicts
-from .boundary import InletContext, classify_patches
-from .settings import C_MU, CaseSettings
+from .boundary import InletContext, abl_conditions, classify_patches
+from .settings import C_MU, CaseSettings, turbulence_family
 
 OPENFOAM_VERSION = "13"
 
@@ -146,33 +146,64 @@ def _write(case_dir, rel_path, text, written):
     written.append(rel_path)
 
 
-def generate_case(case_dir, buildings, direction_deg, speed,
-                  settings=None, porous_zones=None, inlet_profile=None):
+def generate_case(case_dir, buildings, direction_deg, speed, domain,
+                  settings=None, porous_zones=None, inlet_profile=None,
+                  mesh_type="adaptive", inlet_type="coded"):
     """Write a complete OpenFOAM 13 case and return a GeneratedCase summary.
 
     case_dir: target directory (created if missing).
     buildings: list of Building.
     direction_deg: wind direction (meteorological, FROM).
     speed: reference wind speed at settings.z_ref [m/s].
+    domain: an explicit core.box.Domain (the blockMesh box). Supplied per case
+        (e.g. an AIJ wind-tunnel geometry); there is no generic COST 732 sizing
+        in the build path -- core/domain.py is parked.
     settings: CaseSettings (defaults applied if None).
     porous_zones: optional list of porous.PorousZone (trees).
     inlet_profile: optional measured inflow as ((z, u, k, eps), ...); when given
         the inlet uses tabulated profiles instead of Richards & Hoxey.
+    mesh_type: "adaptive" (core/mesh sizing) or "structured" (single graded
+        block, AIJ Case A style).
+    inlet_type: "coded" (Richards & Hoxey or tabulated codedFixedValue) or
+        "equilibrium" (atmBoundaryLayerInlet* + include/ABLConditions). The
+        equilibrium inlet is k-epsilon only.
     """
+    if domain is None:
+        raise ValueError(
+            "generate_case requires an explicit domain (a core.box.Domain); "
+            "generic COST 732 sizing is parked, not in the build path")
     if settings is None:
         settings = CaseSettings()
     if porous_zones is None:
         porous_zones = []
+    if mesh_type not in ("adaptive", "structured"):
+        raise ValueError("mesh_type must be 'adaptive' or 'structured', got {!r}".format(mesh_type))
+    if inlet_type not in ("coded", "equilibrium"):
+        raise ValueError("inlet_type must be 'coded' or 'equilibrium', got {!r}".format(inlet_type))
+    if inlet_type == "equilibrium":
+        if turbulence_family(settings.turbulence_model) != "epsilon":
+            raise ValueError(
+                "equilibrium inlet (atmBoundaryLayerInlet) is k-epsilon only; "
+                "got model {!r}".format(settings.turbulence_model))
+        if inlet_profile is not None:
+            raise ValueError("equilibrium inlet does not take a measured inlet_profile")
 
     cleaned, bbox, max_height = _validate_buildings(buildings, settings.min_building_area)
     H = max_height
 
-    domain = compute_domain(bbox, H, direction_deg, settings.domain_factors)
     mesh_spec = compute_mesh_spec(
         domain, bbox, H,
         target_facade_cell=settings.target_facade_cell,
         cell_budget=settings.cell_budget,
         min_base_cell=settings.min_base_cell)
+
+    if mesh_type == "structured":
+        # The structured base carries its OWN snappy recipe ("nobox"), not the
+        # adaptive one: no refinement region, the building snapped at a single
+        # explicit surface level (AIJ Case A canon = 1). Near-facade resolution
+        # is set by the structured base cell, not by region refinement.
+        mesh_spec.surface_level = settings.structured_surface_level
+        mesh_spec.region_level = 0
 
     abl = abl_parameters(speed, settings.z_ref, settings.z0)
     omega = abl.epsilon / (C_MU * abl.k)
@@ -183,10 +214,12 @@ def generate_case(case_dir, buildings, direction_deg, speed,
     top_bc = "symmetry" if settings.side_top_symmetry else "slip"
 
     profile = tuple(inlet_profile) if inlet_profile is not None else None
+    inlet_mode = "equilibrium" if inlet_type == "equilibrium" else "coded"
     ctx = InletContext(
         ux=ux, uy=uy, flow_x=flow_x, flow_y=flow_y, speed=speed,
         z_ref=settings.z_ref, z0=settings.z0,
-        k=abl.k, epsilon=abl.epsilon, omega=omega, profile=profile)
+        k=abl.k, epsilon=abl.epsilon, omega=omega, profile=profile,
+        inlet_mode=inlet_mode)
 
     location = _location_in_mesh(cleaned, bbox, domain, max_height)
 
@@ -215,9 +248,14 @@ def generate_case(case_dir, buildings, direction_deg, speed,
     boundary_types["top"] = "symmetry" if settings.side_top_symmetry else "patch"
 
     # system/
-    _write(case_dir, "system/blockMeshDict",
-           mesh_dicts.block_mesh_dict(domain, mesh_spec, settings.vertical_grading,
-                                      boundary_types=boundary_types), written)
+    if mesh_type == "structured":
+        block_text = mesh_dicts.structured_block_mesh_dict(
+            domain, settings.structured_base_cell, settings.structured_nz,
+            settings.structured_grading, boundary_types=boundary_types)
+    else:
+        block_text = mesh_dicts.block_mesh_dict(
+            domain, mesh_spec, settings.vertical_grading, boundary_types=boundary_types)
+    _write(case_dir, "system/blockMeshDict", block_text, written)
     _write(case_dir, "system/snappyHexMeshDict",
            mesh_dicts.snappy_hex_mesh_dict(
                mesh_spec, location, settings.cell_budget,
@@ -251,6 +289,9 @@ def generate_case(case_dir, buildings, direction_deg, speed,
                                     top_bc=top_bc, ground_z0=settings.ground_z0)
     for name in sorted(field_files):
         _write(case_dir, "0/{}".format(name), field_files[name], written)
+    # The equilibrium inlet patches #include this shared ABL conditions file.
+    if inlet_type == "equilibrium":
+        _write(case_dir, "0/include/ABLConditions", abl_conditions(ctx), written)
 
     manifest_path = _write_manifest(
         case_dir, cleaned, direction_deg, speed, domain, mesh_spec, abl,

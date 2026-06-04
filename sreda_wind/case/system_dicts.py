@@ -36,7 +36,79 @@ def control_dict(settings):
     parts.append("timeFormat      general;")
     parts.append("timePrecision   6;")
     parts.append("runTimeModifiable true;")
+    # Stationarity-gate monitor probes (frozen probe == true steady solution).
+    points = getattr(settings, "monitor_points", ())
+    if points:
+        parts.append("")
+        parts.append(probes_functions(points))
     return "\n".join(parts) + FOOTER
+
+
+def probes_functions(points, fields=("U",)):
+    """A controlDict `functions` block sampling `fields` at monitor points.
+
+    The series it writes lets the solver layer check that the field has reached a
+    fixed point (probe FROZEN) before any quantity is taken -- the mandatory
+    stationarity gate. For a massively separated case the residuals may plateau
+    above target; only a frozen probe proves a true steady solution (otherwise it
+    is a limit cycle and q must come from a plateau window, see window_stat).
+    """
+    parts = []
+    parts.append("functions")
+    parts.append("{")
+    parts.append("    monitorProbes")
+    parts.append("    {")
+    parts.append("        type            probes;")
+    parts.append('        libs            ("libsampling.so");')
+    parts.append("        writeControl    timeStep;")
+    parts.append("        writeInterval   1;")
+    parts.append("        fields          ({});".format(" ".join(fields)))
+    parts.append("        probeLocations")
+    parts.append("        (")
+    i = 0
+    while i < len(points):
+        p = points[i]
+        parts.append("            ({} {} {})".format(p[0], p[1], p[2]))
+        i += 1
+    parts.append("        );")
+    parts.append("    }")
+    parts.append("}")
+    return "\n".join(parts)
+
+
+def field_average_functions(fields=("U",), time_start=0):
+    """A controlDict `functions` block that time-averages fields from time_start.
+
+    For a steady RANS that plateaus without converging (massively separated
+    flows, e.g. AIJ Case A), the physical answer is the field TIME-AVERAGED over
+    the plateau window, then post-processed -- not a single snapshot. This writes
+    a fieldAverage functionObject producing <field>Mean; sample q from UMean.
+    Pair it with solver.convergence.window_stat for the per-snapshot band.
+    """
+    parts = []
+    parts.append("functions")
+    parts.append("{")
+    parts.append("    fieldAverage")
+    parts.append("    {")
+    parts.append("        type            fieldAverage;")
+    parts.append('        libs            ("libfieldFunctionObjects.so");')
+    parts.append("        timeStart       {};".format(time_start))
+    parts.append("        writeControl    writeTime;")
+    parts.append("        fields")
+    parts.append("        (")
+    i = 0
+    while i < len(fields):
+        parts.append("            {}".format(fields[i]))
+        parts.append("            {")
+        parts.append("                mean        on;")
+        parts.append("                prime2Mean  off;")
+        parts.append("                base        time;")
+        parts.append("            }")
+        i += 1
+    parts.append("        );")
+    parts.append("    }")
+    parts.append("}")
+    return "\n".join(parts)
 
 
 def fv_schemes(turbulence_model):

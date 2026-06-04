@@ -7,9 +7,7 @@ bare ``CaseSettings()`` produces a runnable case.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-from ..core.domain import DomainFactors
+from dataclasses import dataclass
 
 # --- physical constants -----------------------------------------------------
 KAPPA = 0.41        # von Karman constant
@@ -53,14 +51,21 @@ class CaseSettings:
     z_ref: float = 10.0            # reference height [m]
     nu: float = NU_AIR
 
-    # Domain extent (COST 732 factors)
-    domain_factors: DomainFactors = field(default_factory=DomainFactors)
-
     # Mesh sizing (adaptive; no hard cell-count clip)
     target_facade_cell: float = 2.0
     cell_budget: int = 3_000_000
     min_base_cell: float = 4.0     # background-cell floor; model-scale sets it small
     vertical_grading: float = 2.0  # blockMesh simpleGrading in z (fine near ground)
+
+    # Structured background mesh (mesh_type="structured"): a single graded block
+    # with uniform horizontal cells and a strong vertical grading, matching the
+    # AIJ Case A study (nz=50, grading 12). Ignored for the adaptive mesh.
+    structured_base_cell: float = 0.01   # uniform horizontal cell size [m]
+    structured_nz: int = 50              # vertical cell count
+    structured_grading: float = 12.0     # vertical simpleGrading
+    # snappy on the structured base is "nobox": no refinement region, the
+    # building is snapped at this surface level (AIJ Case A canon = 1).
+    structured_surface_level: int = 1
 
     # Surface (prism) layers at the building walls (0 -> addLayers off)
     surface_layers: int = 0
@@ -84,6 +89,10 @@ class CaseSettings:
 
     # Post-processing
     sample_height: float = 1.75    # pedestrian height [m]
+    # Stationarity-gate monitor probe locations ((x, y, z), ...). When set, a
+    # probes functionObject samples them every iteration so the solver layer can
+    # confirm the field froze (true steady solution) before taking any quantity.
+    monitor_points: tuple = ()
 
     # Parallel decomposition (0 -> auto: min(4, cpu_count))
     n_procs: int = 0

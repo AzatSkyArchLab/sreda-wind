@@ -1,15 +1,17 @@
 """Assemble the OpenFOAM case configuration for AIJ Case A.
 
 Turns the reference data + a turbulence-model choice into the inputs for
-case.generate_case: the building, the wind, a CaseSettings tuned to the AIJ
-sensitivity study (Section 3), and the tabulated inflow profile. The STRICT
-conditions (measured inflow, rough floor z0, 2nd-order advection, tight
-convergence) are honoured; the FLEXIBLE ones use practical choices (symmetry
-sides/top, COST 732 domain extents).
+case.generate_case: the building, the wind, the explicit wind-tunnel domain, a
+CaseSettings tuned to the AIJ sensitivity study (Section 3), and the tabulated
+inflow profile. The STRICT conditions (measured inflow, rough floor z0,
+2nd-order advection, tight convergence) are honoured; the FLEXIBLE ones use
+practical choices (symmetry sides/top). The domain is the Meng & Hibi tunnel
+geometry, supplied explicitly -- there is no generic COST 732 sizing here.
 """
 from __future__ import annotations
 
 from sreda_wind.case import Building, CaseSettings
+from sreda_wind.core import Domain
 
 from . import geometry, inlet, reference
 
@@ -18,6 +20,18 @@ B = geometry.B                 # 0.08 m
 H = geometry.H                 # 0.16 m
 GROUND_Z0 = 1.8e-4             # rough-wall log-law roughness length [m]
 WIND_DIRECTION_DEG = 270.0     # wind along +x
+
+
+def case_a_domain():
+    """Meng & Hibi wind-tunnel domain for Case A (the canonical 100x80x50 box).
+
+    x in [-0.4, 0.6], y in [-0.4, 0.4], z in [0, 0.8] m -> with a 0.01 m base
+    cell and nz=50 this is exactly the validated 100x80x50 blockMesh. The domain
+    is a property OF THE CASE (Case B/C/D each carry their own tunnel geometry),
+    not a generic formula.
+    """
+    return Domain(xmin=-0.4, xmax=0.6, ymin=-0.4, ymax=0.4,
+                  zmin=0.0, zmax=0.8, streamwise_axis="x")
 
 
 def case_a_settings(model="kEpsilon", iterations=2000):
@@ -69,6 +83,7 @@ def case_a_inputs(data=None, model="kEpsilon", iterations=2000):
         "buildings": [Building(footprint=geometry.footprint(B), height=H)],
         "direction_deg": WIND_DIRECTION_DEG,
         "speed": speed,
+        "domain": case_a_domain(),
         "settings": settings,
         "inlet_profile": profile,
     }

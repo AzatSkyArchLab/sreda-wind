@@ -71,6 +71,7 @@ class InletContext:
     epsilon: float     # dissipation rate [m2/s3]
     omega: float       # specific dissipation rate [1/s]
     profile: tuple = None   # optional ((z, u, k, eps), ...) measured inflow
+    inlet_mode: str = "coded"   # "coded" (Richards-Hoxey/tabulated) | "equilibrium"
 
 
 def symmetry_block(patch):
@@ -108,6 +109,36 @@ def _abl_coded_inlet(patch, ctx):
     lines.append("                field[faceI] = vector(flowX * Umag, flowY * Umag, 0);")
     lines.append("            }")
     lines.append("        #};")
+    lines.append("    }")
+    return "\n".join(lines)
+
+
+def abl_conditions(ctx):
+    """Text of 0/include/ABLConditions for the equilibrium atmospheric inlet.
+
+    The atmBoundaryLayerInlet* boundary conditions (OpenFOAM 13
+    libatmosphericModels) read these keywords: a reference speed at a reference
+    height, the vertical and flow directions, the roughness length and the ground
+    datum. This reproduces the proven Case A equilibrium inlet, parameterised by
+    the run's wind and roughness.
+    """
+    lines = []
+    lines.append("Uref            {};".format(ctx.speed))
+    lines.append("Zref            {};".format(ctx.z_ref))
+    lines.append("zDir            (0 0 1);")
+    lines.append("flowDir         ({:.6f} {:.6f} 0);".format(ctx.flow_x, ctx.flow_y))
+    lines.append("z0              uniform {};".format(ctx.z0))
+    lines.append("zGround         uniform 0;")
+    return "\n".join(lines) + "\n"
+
+
+def _atm_inlet(patch, kind):
+    """An atmBoundaryLayerInlet{Velocity|K|Epsilon} block pulling ABLConditions."""
+    lines = []
+    lines.append("    {}".format(patch))
+    lines.append("    {")
+    lines.append("        type            atmBoundaryLayerInlet{};".format(kind))
+    lines.append('        #include        "include/ABLConditions"')
     lines.append("    }")
     return "\n".join(lines)
 
@@ -232,6 +263,8 @@ def u_patch(patch, bc_type, ctx):
     if bc_type == "symmetry":
         return symmetry_block(patch)
     if bc_type == "inlet":
+        if ctx.inlet_mode == "equilibrium":
+            return _atm_inlet(patch, "Velocity")
         if ctx.profile is not None:
             return _tabulated_inlet_vector(patch, ctx)
         return _abl_coded_inlet(patch, ctx)
@@ -264,6 +297,9 @@ def scalar_patch(patch, bc_type, value, ctx=None, which=None):
     if bc_type == "symmetry":
         return symmetry_block(patch)
     if bc_type == "inlet":
+        if ctx is not None and ctx.inlet_mode == "equilibrium" and which in ("k", "epsilon"):
+            kind = "K" if which == "k" else "Epsilon"
+            return _atm_inlet(patch, kind)
         if ctx is not None and ctx.profile is not None and which in ("k", "epsilon"):
             name = "tabulatedInlet_{}".format(which)
             return _tabulated_inlet_scalar(patch, ctx, name, "k" if which == "k" else "eps")
