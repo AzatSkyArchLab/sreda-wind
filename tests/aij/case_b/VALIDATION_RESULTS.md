@@ -11,7 +11,9 @@ mesh + measured tabulated inlet, std k-ε, **equilibrium seed (generator-enforce
 + monitor-probe stationarity gate** (the Case A convergence protocol).
 
 ## Status: CLOSED — std k-ε converges (steady) but q = 0.28 < 0.66 (AIJ),
-## driven by a DIRECTLY MEASURED windward stagnation-k over-production.
+## because it FAILS TO REPRODUCE the upstream recirculation in front of the
+## broadside plate (proven by the sign of streamwise U at bound points). A
+## qualitative steady-k-ε limit, NOT cured by any k-ε variant (Phase-1 matrix).
 
 ## Result
 | metric | value |
@@ -50,34 +52,55 @@ shedding) reach a fixed point with last-200 half-band ~2e-6 and abs fluctuation
 4. **Error localised to the front/sides, NOT the wake.** Bias (ratio_cfd −
    ratio_exp) by zone: far-lateral +0.206, upstream +0.142, side +0.099,
    near-wake +0.028, far-wake +0.021. The opposite of a "bad wake" signature.
-5. **Mechanism — a non-physical lateral jet.** Lateral profile at x=−75
-   (upstream): CFD over-decelerates the windward centreline (Uh 0.40 vs exp 0.99)
-   and forms a side JET peaking at Uh 3.97 = +22% ABOVE the incident (3.26) at
-   y = −150…−250; the experiment shows NO jet (Uh stays ≤ incident everywhere).
-6. **Root cause DIRECTLY MEASURED — windward stagnation-k over-production.** k in
-   the cells just upstream of the front face (y=0) vs the equilibrium incident k
-   at the same height:
+5. **Mechanism — DIRECTLY PROVEN by the sign of streamwise U: a MISSED upstream
+   recirculation.** Signed U(y) at x = −75 mm, z = 12.5 mm, sampled at the exact
+   measured coordinates (binding verified), wind along +x so U < 0 = reverse
+   flow:
 
-   | z_mm | k_stagnation | k_incident | ratio |
-   |------|--------------|------------|-------|
-   | 12.5 | 1.0–1.4 | 0.33 | ×3–4 |
-   | 50 | 1.8–2.3 | 0.51 | ×3.5–4.4 |
-   | 100 | 2.4–3.1 | 0.58 | ×4–5.3 |
-   | 150 | **3.97 (peak)** | 0.58 | **×6.9** |
+   | pt no | (x,y) mm | exp U | std k-ε U | RNG U | sign exp/std/RNG |
+   |-------|----------|-------|-----------|-------|------------------|
+   | 1 | (−75, 0) | **−0.98** | +0.40 | **−0.44** | REV / fwd / REV |
+   | 2 | (−75,−25) | **−0.87** | +0.46 | **−0.38** | REV / fwd / REV |
+   | 3 | (−75,−50) | **−0.78** | +0.65 | **−0.18** | REV / fwd / REV |
+   | 4 | (−75,−76) | **−0.49** | +1.04 | +0.24 | REV / fwd / fwd |
+   | 5 | (−75,−100) | **−0.02** | +1.64 | +0.92 | REV / fwd / fwd |
 
-   k is amplified ×3–7 (peak ×6.9 at the upper windward face) — the standard-k-ε
-   stagnation-k over-production, the SAME anomaly as Case A (there ×~100 on the
-   cube; milder here on the plate, same mechanism). Elevated k → elevated νt →
-   over-deflection of the approach flow → the non-physical side jet → far-lateral
-   over-speed → low q. The chain is closed end-to-end by measurement, not assumed.
+   The experiment has a standing **upstream recirculation** (reverse flow, U < 0
+   on points 1–5, to U = −0.98, with V converging inward — a horseshoe/standing
+   vortex in front of the tall broadside plate). **std k-ε and realizable k-ε miss
+   it entirely** (U > 0 at every point, attached diverging flow). **RNG recovers
+   it only partially** (points 1–3). The "side jet" (Uh up to +22 % above the
+   incident at y = −150…−250) is the **SYMPTOM** of this missed recirculation —
+   the CFD sends the flow around the plate (attached, diverging) instead of into
+   a front recirculation, so the side flow is too fast where the experiment is in
+   a converging/recirculating zone.
+6. **stagnation-k is elevated but is NOT the cause (yesterday's chain is
+   RETRACTED).** Windward stagnation k IS over-produced (peak k ≈ 3.97 at
+   z = 150 mm, ×6.7 the incident — a real fact). But the jet is **k_stag-
+   INDEPENDENT**: RNG halves k_stag (×6.7 → ×3.0) yet the side-jet profile is
+   unchanged (std peak 3.99 vs RNG 3.96, both +22 %, identical within ~2 % at
+   every y). So the earlier causal chain "stagnation-k → jet → low q" is
+   DISPROVEN — it mistook a correlation (high k_stag coincides with the jet) for
+   causation. The driver is the missed recirculation (a separation/topology
+   failure), which the stagnation-k suppression only *partly* relates to (lower
+   k_stag in RNG → partial reverse-flow recovery, but insufficient).
 
 ## Conclusion
 std k-ε on Case B is a genuine, reproducible STEADY solution that under-predicts
-pedestrian comfort (q = 0.28), driven by a measured windward stagnation-k
-over-production — not a domain/normalisation/inlet artefact (all eliminated).
-Consistent with Case A (q = 0.617): std k-ε's stagnation anomaly is the limiter
-on bluff-body pedestrian wind. A production-limited model (Kato–Launder / MMK /
-Durbin — not in OF13 Foundation) or URANS is the remedy; deferred to backlog.
+pedestrian comfort (q = 0.278), because it **fails to reproduce the upstream
+recirculation** in front of the broadside plate — a **qualitative** error
+(wrong sign of U, not a magnitude offset), proven at bound measurement points
+(1–5). All setup causes were eliminated (reference X = 5.133 from data, incident
+correct, lateral blockage rejected by ×3 widening, wake matches; §1–4).
+
+**Not cured by switching k-ε variant** — the Phase-1 multi-model matrix
+(PHASE1_MODEL_MATRIX.md) confirms: realizable k-ε q = 0.270, RNG k-ε q = 0.261,
+k-ω SST 0.226 (snapshot). Lower k_stag did NOT raise q (it lowered it). A steady
+RANS k-ε family cannot capture this front recirculation; the path is **URANS**
+(the unsteady horseshoe/standing-vortex dynamics), deferred to backlog. (Note:
+the SAME k-ε stagnation over-production is real on both cases, but Case A's q is
+limited differently — see PHASE1_MODEL_MATRIX.md; do not over-generalise one
+anomaly across geometries.)
 
 Reproduce: domain Domain(-0.30,1.00,-1.50,1.50,0,1.00); structured base 0.01,
 nz 50, grading 12, surface level 2, 4 building layers; measured tabulated inlet
